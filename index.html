@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>新潟紀行</title>
+    
+    <!-- iOS PWA 核心設定 (這是讓 iPhone 變 App 的關鍵) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> <!-- 讓狀態列透明融合 -->
+    <meta name="apple-mobile-web-app-title" content="新潟紀行">
+    <meta name="format-detection" content="telephone=no">
+    <!-- Android Chrome 設定 -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#f4f4f0">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script>
+        // --- 1. 動態注入 Manifest 與 Icon (嘗試欺騙瀏覽器觸發 PWA) ---
+        (function() {
+            // Icon SVG (紅色鳥居圓形圖示)
+            const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><circle cx="256" cy="256" r="256" fill="#a84c4c"/><path fill="#fff" d="M136 120h240v-24h-240v24zm208 0v312h-32v-200h-112v200h-32v-312h-24v-40h240v40h-40zm-160 0h112v-24h-112v24z"/></svg>`;
+            const iconUrl = 'data:image/svg+xml;base64,' + btoa(iconSvg);
+
+            // 設定 Favicon & Apple Icon
+            const setLink = (rel, href) => {
+                let link = document.createElement('link');
+                link.rel = rel;
+                link.href = href;
+                document.head.appendChild(link);
+            };
+            setLink('icon', iconUrl);
+            setLink('apple-touch-icon', iconUrl);
+
+            // 產生 Manifest JSON (強制 display: standalone)
+            const manifest = {
+                "name": "新潟紀行",
+                "short_name": "新潟紀行",
+                "start_url": location.href, // 嘗試鎖定當前路徑
+                "display": "standalone",     // 關鍵：要求獨立視窗
+                "background_color": "#f4f4f0",
+                "theme_color": "#f4f4f0",
+                "orientation": "portrait",
+                "icons": [{ "src": iconUrl, "sizes": "512x512", "type": "image/svg+xml" }]
+            };
+            
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            setLink('manifest', manifestURL);
+        })();
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'muji-bg': '#f4f4f0',
+                        'muji-card': '#ffffff',
+                        'muji-text': '#4a4a4a',
+                        'muji-accent': '#7d7d7d',
+                        'muji-red': '#a84c4c',
+                        'muji-green': '#6d7c65',
+                        'muji-border': '#e0e0e0'
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        num: ['"Lato"', 'sans-serif']
+                    },
+                    padding: {
+                        'safe-top': 'env(safe-area-inset-top)',
+                        'safe-bottom': 'env(safe-area-inset-bottom)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #f4f4f0;
+            color: #4a4a4a;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none; /* App質感：禁止選取文字 */
+            overscroll-behavior-y: none; /* 禁止橡皮筋效果，更像 App */
+            padding-bottom: calc(80px + env(safe-area-inset-bottom));
+        }
+
+        /* 允許輸入框選取 */
+        input, textarea { user-select: text; }
+        
+        /* 隱藏捲軸 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tab-content {
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .tab-content.active {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .muji-input {
+            border: 1px solid #e0e0e0;
+            background-color: #fcfcfc;
+            border-radius: 8px;
+            padding: 12px;
+            width: 100%;
+            outline: none;
+            appearance: none;
+            font-size: 16px; /* 防止 iOS 輸入時放大 */
+        }
+        .muji-input:focus { border-color: #a84c4c; }
+
+        .btn-primary {
+            background-color: #4a4a4a;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: opacity 0.2s;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .btn-primary:active { opacity: 0.8; transform: scale(0.98); }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(0,0,0,0.02);
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        .card-clickable:active { transform: scale(0.98); background-color: #fafafa; }
+
+        /* Splash Screen Animation */
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #f4f4f0; z-index: 9999;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+            transition: opacity 0.5s ease-out, visibility 0.5s;
+        }
+        .fade-out { opacity: 0; visibility: hidden; }
+
+        /* iOS Safe Area */
+        header { padding-top: max(12px, env(safe-area-inset-top)); }
+        nav { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    </style>
+</head>
+<body>
+
+    <!-- 2. Splash Screen (App 啟動畫面) -->
+    <div id="splash-screen">
+        <div class="mb-4">
+            <svg width="80" height="80" viewBox="0 0 512 512">
+                <circle cx="256" cy="256" r="256" fill="#a84c4c"/>
+                <path fill="#fff" d="M136 120h240v-24h-240v24zm208 0v312h-32v-200h-112v200h-32v-312h-24v-40h240v40h-40zm-160 0h112v-24h-112v24z"/>
+            </svg>
+        </div>
+        <h1 class="text-2xl font-bold text-muji-text tracking-widest">NIIGATA</h1>
+        <p class="text-xs text-muji-accent mt-2 font-num">LOADING...</p>
+    </div>
+
+    <!-- Header -->
+    <header class="fixed top-0 w-full bg-muji-bg/90 backdrop-blur-md z-40 px-4 pb-3 border-b border-muji-border/50 flex justify-between items-end h-[calc(60px+env(safe-area-inset-top))]">
+        <div>
+            <h1 class="text-xl font-bold tracking-widest text-muji-text">NIIGATA</h1>
+            <p class="text-[10px] text-muji-accent tracking-wider font-num">2024 AUTUMN</p>
+        </div>
+        <div class="text-right">
+            <span class="text-[10px] bg-muji-text text-white px-3 py-1 rounded-full font-num shadow-sm">TPE ✈ KIJ</span>
+        </div>
+    </header>
+
+    <!-- App Installation Prompt (Detects if running in browser) -->
+    <div id="install-prompt" class="hidden fixed bottom-20 left-4 right-4 bg-gray-900 text-white p-4 rounded-xl shadow-2xl z-50 flex items-center justify-between animate-bounce">
+        <div class="text-sm">
+            <p class="font-bold">獲得 App 體驗</p>
+            <p class="text-xs text-gray-300 mt-1">請點擊分享 <i class="fas fa-share-square mx-1"></i> 加入主畫面</p>
+        </div>
+        <button onclick="document.getElementById('install-prompt').style.display='none'" class="text-gray-400 p-2"><i class="fas fa-times"></i></button>
+    </div>
+
+    <main class="mt-[calc(70px+env(safe-area-inset-top))] px-4 pb-4" id="app">
+        <!-- SECTIONS (Same as before but refined) -->
+        
+        <!-- PLAN -->
+        <div id="section-plan" class="tab-content active">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-muji-text">行程總覽</h2>
+                <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">Niigata Trip</span>
+            </div>
+            
+            <!-- Day 1 -->
+            <div class="mb-6">
+                <div class="sticky top-[calc(60px+env(safe-area-inset-top))] z-30 bg-muji-bg/95 py-2 mb-2 border-b border-gray-200/50 backdrop-blur">
+                    <span class="text-2xl font-bold font-num mr-2 text-muji-text">D1</span>
+                    <span class="text-sm font-bold text-muji-accent">抵達新潟</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="card card-clickable flex gap-4 items-center">
+                        <div class="text-center min-w-[50px]">
+                            <div class="text-lg font-bold font-num text-muji-red">13:45</div>
+                            <div class="text-[10px] text-gray-400">TPE</div>
+                        </div>
+                        <div class="h-8 w-[1px] bg-gray-200"></div>
+                        <div class="flex-1">
+                            <div class="font-bold">✈️ 航班 IT228</div>
+                            <div class="text-xs text-gray-500 mt-0.5">預計 18:00 抵達 (KIJ)</div>
+                        </div>
+                    </div>
+                    <div class="card card-clickable flex gap-4 items-center">
+                        <div class="text-center min-w-[50px]">
+                            <div class="text-lg font-bold font-num text-gray-600">18:00</div>
+                            <div class="text-[10px] text-gray-400">BUS</div>
+                        </div>
+                        <div class="h-8 w-[1px] bg-gray-200"></div>
+                        <div class="flex-1">
+                            <div class="font-bold">機場巴士移動</div>
+                            <div class="text-xs text-gray-500 mt-0.5">前往新潟站 (唯一巴士區段)</div>
+                        </div>
+                    </div>
+                    <div class="card card-clickable bg-muji-text text-white" onclick="openMap('新潟站 壽司')">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-bold">🍽️ 晚餐：へぎそば / 壽司</div>
+                                <div class="text-xs text-gray-300 mt-1">新潟站周邊美食探索</div>
+                            </div>
+                            <i class="fas fa-map-marked-alt text-xl opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Day 2 -->
+             <div class="mb-6">
+                <div class="sticky top-[calc(60px+env(safe-area-inset-top))] z-30 bg-muji-bg/95 py-2 mb-2 border-b border-gray-200/50 backdrop-blur">
+                    <span class="text-2xl font-bold font-num mr-2 text-muji-text">D2</span>
+                    <span class="text-sm font-bold text-muji-accent">市區散策</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="card card-clickable">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm font-bold font-num text-muji-red">09:30</span>
+                            <span class="text-xs text-gray-400">Station</span>
+                        </div>
+                        <div class="font-bold mb-1">🍶 ぽんしゅ館 (Ponshukan)</div>
+                        <div class="text-xs text-gray-500">投幣試飲清酒，感受新潟米魂</div>
+                    </div>
+                     <div class="card card-clickable" onclick="openMap('沼垂露臺商店街')">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm font-bold font-num text-gray-600">10:30</span>
+                            <span class="text-xs text-gray-400">Walk 25min</span>
+                        </div>
+                        <div class="font-bold mb-1">🚶 沼垂露臺商店街</div>
+                        <div class="text-xs text-gray-500">文創散策與午餐 <i class="fas fa-external-link-alt ml-1 text-[10px]"></i></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Day 3 -->
+            <div class="mb-6">
+                <div class="sticky top-[calc(60px+env(safe-area-inset-top))] z-30 bg-muji-bg/95 py-2 mb-2 border-b border-gray-200/50 backdrop-blur">
+                    <span class="text-2xl font-bold font-num mr-2 text-muji-text">D3</span>
+                    <span class="text-sm font-bold text-muji-accent">神社巡禮</span>
+                </div>
+                <div class="bg-red-50 border border-red-100 rounded-lg p-3 mb-3 flex items-start gap-3">
+                    <i class="fas fa-exclamation-triangle text-red-500 mt-1"></i>
+                    <div>
+                        <div class="font-bold text-sm text-red-800">轉乘注意</div>
+                        <div class="text-xs text-red-700 mt-1">07:30 出發，於 <span class="font-bold">吉田站 (Yoshida)</span> 轉乘彌彥線。</div>
+                    </div>
+                </div>
+                <div class="card card-clickable" onclick="openMap('彌彥神社')">
+                    <div class="font-bold">⛩️ 彌彥神社區域</div>
+                    <div class="text-xs text-gray-500 mt-1">08:40 - 12:00 | 參拜、老街、纜車</div>
+                </div>
+            </div>
+            
+            <div class="h-10"></div> <!-- Spacer -->
+        </div>
+
+        <!-- GUIDE -->
+        <div id="section-guide" class="tab-content">
+            <h2 class="text-lg font-bold text-muji-text mb-4">深度導覽</h2>
+            <article class="card p-0 overflow-hidden border-0 shadow-md">
+                <div class="h-48 bg-gray-200 relative">
+                     <div class="absolute inset-0 flex items-center justify-center text-6xl text-gray-300 opacity-50"><i class="fas fa-torii-gate"></i></div>
+                     <div class="absolute bottom-0 w-full bg-gradient-to-t from-black/80 to-transparent p-4 pt-10">
+                         <h3 class="text-white font-bold text-lg">越後一宮：彌彥神社</h3>
+                     </div>
+                </div>
+                <div class="p-5">
+                    <p class="text-sm text-gray-600 leading-7 text-justify">
+                        彌彥神社是新潟縣內最具代表性的神社，自古以來被尊為「越後一宮」。這裡供奉著教導越後人們農耕、漁獵的神明「天香山命」。穿過巨大的紅色鳥居，古木參天，空氣中彌漫著神聖的氣息。
+                    </p>
+                </div>
+            </article>
+        </div>
+
+        <!-- WALLET -->
+        <div id="section-wallet" class="tab-content">
+            <h2 class="text-lg font-bold text-muji-text mb-4">旅行錢包</h2>
+            
+            <!-- Calculator Card -->
+            <div class="card bg-stone-100 border-0 mb-4 sticky top-[calc(60px+env(safe-area-inset-top))] z-20">
+                <div class="flex items-center justify-between mb-2 opacity-60">
+                    <label class="text-xs">匯率 (JPY→TWD)</label>
+                    <input type="number" id="exchange-rate" value="0.215" class="w-14 text-right bg-transparent border-b border-gray-400 text-sm font-num" onchange="calc()">
+                </div>
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="calc-input" placeholder="500*2" class="bg-white rounded p-2 flex-1 text-lg font-num shadow-inner" inputmode="decimal" onkeyup="if(event.key==='Enter')calc()">
+                    <button onclick="calc()" class="bg-muji-text text-white w-12 rounded shadow"><i class="fas fa-equals"></i></button>
+                </div>
+                <div class="flex justify-between items-end mt-1">
+                    <div class="text-2xl font-bold font-num" id="res-jpy">¥0</div>
+                    <div class="text-xl font-bold font-num text-muji-green" id="res-twd">$0</div>
+                </div>
+            </div>
+
+            <!-- Quick Add -->
+            <button onclick="toggleDrawer(true)" class="w-full bg-white border border-dashed border-gray-300 text-gray-500 py-3 rounded-xl mb-4 hover:bg-gray-50 active:scale-98 transition-transform">
+                <i class="fas fa-plus mr-1"></i> 新增一筆支出
+            </button>
+
+            <!-- List -->
+            <div id="expense-list" class="space-y-2 pb-20"></div>
+        </div>
+
+        <!-- LISTS -->
+        <div id="section-lists" class="tab-content">
+            <h2 class="text-lg font-bold text-muji-text mb-4">清單 & 備忘</h2>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden min-h-[400px]">
+                <div class="flex border-b border-gray-100">
+                    <button onclick="switchList('packing')" id="tab-packing" class="flex-1 py-3 bg-yellow-50 text-yellow-800 font-bold text-sm border-b-2 border-yellow-600">行李</button>
+                    <button onclick="switchList('memo')" id="tab-memo" class="flex-1 py-3 text-gray-400 text-sm">備忘</button>
+                </div>
+                <div class="p-4" id="list-content">
+                    <!-- Packing -->
+                    <div id="view-packing">
+                        <div id="packing-container" class="space-y-2"></div>
+                        <div class="mt-4 flex gap-2">
+                            <input type="text" id="new-pack" class="muji-input py-2 text-sm" placeholder="新增項目...">
+                            <button onclick="addPack()" class="btn-primary py-2 px-4"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <!-- Memo -->
+                    <div id="view-memo" class="hidden">
+                        <div id="memo-container" class="space-y-2 mb-4"></div>
+                        <textarea id="new-memo" class="muji-input text-sm" rows="2" placeholder="輸入備忘..."></textarea>
+                        <button onclick="addMemo()" class="btn-primary w-full mt-2">新增備忘</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- INFO -->
+        <div id="section-info" class="tab-content">
+            <h2 class="text-lg font-bold text-muji-text mb-4">資訊</h2>
+            <div class="grid grid-cols-2 gap-3">
+                <a href="https://www.jma.go.jp/bosai/forecast/" target="_blank" class="card flex flex-col items-center justify-center py-8 active:scale-95">
+                    <i class="fas fa-cloud-sun text-3xl text-blue-400 mb-2"></i>
+                    <span class="font-bold text-sm">天氣預報</span>
+                </a>
+                <a href="https://www.google.com/maps/search/?api=1&query=Convenience+Store" target="_blank" class="card flex flex-col items-center justify-center py-8 active:scale-95">
+                    <i class="fas fa-store text-3xl text-orange-400 mb-2"></i>
+                    <span class="font-bold text-sm">附近超商</span>
+                </a>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Nav (App Like) -->
+    <nav class="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 pb-safe z-50">
+        <div class="flex justify-around items-center h-[60px]">
+            <button onclick="nav('plan')" class="nav-item active flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-map-marked-alt text-lg mb-1"></i><span class="text-[10px]">行程</span>
+            </button>
+            <button onclick="nav('guide')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-book-open text-lg mb-1"></i><span class="text-[10px]">導覽</span>
+            </button>
+            <button onclick="nav('wallet')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <div class="bg-muji-text text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg transform -translate-y-3 border-4 border-white">
+                    <i class="fas fa-wallet"></i>
+                </div>
+            </button>
+            <button onclick="nav('lists')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-check-square text-lg mb-1"></i><span class="text-[10px]">清單</span>
+            </button>
+            <button onclick="nav('info')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-info-circle text-lg mb-1"></i><span class="text-[10px]">資訊</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Expense Drawer -->
+    <div id="expense-drawer" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="toggleDrawer(false)"></div>
+        <div class="absolute bottom-0 w-full bg-white rounded-t-2xl p-5 pb-safe animate-slide-up">
+            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4"></div>
+            <h3 class="text-center font-bold mb-4">新增消費</h3>
+            <input type="text" id="exp-name" class="muji-input mb-3" placeholder="品項 (如: 晚餐)">
+            <input type="number" id="exp-amt" class="muji-input mb-3 text-lg font-num" placeholder="金額 (JPY)">
+            
+            <div class="flex items-center gap-2 mb-4">
+                <label class="flex-1 border border-dashed border-gray-300 rounded-lg p-3 text-center text-gray-500 text-sm active:bg-gray-50">
+                    <i class="fas fa-camera mr-2"></i>拍照存證
+                    <input type="file" id="exp-img" accept="image/*" class="hidden" capture="environment" onchange="previewImg(this)">
+                </label>
+                <div id="img-check" class="hidden text-green-500"><i class="fas fa-check-circle text-xl"></i></div>
+            </div>
+
+            <button onclick="saveExp()" class="btn-primary w-full text-lg shadow-lg bg-muji-text">確定儲存</button>
+        </div>
+    </div>
+
+    <style>
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        .nav-item.active { color: #4a4a4a; }
+    </style>
+
+    <script>
+        // --- Core Logic ---
+
+        // 1. Navigation
+        function nav(id) {
+            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+            document.getElementById('section-' + id).classList.add('active');
+            
+            document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+            // Find button by icon logic roughly or index
+            const idx = ['plan', 'guide', 'wallet', 'lists', 'info'].indexOf(id);
+            if(idx !== -1) document.querySelectorAll('.nav-item')[idx].classList.add('active');
+            window.scrollTo(0,0);
+        }
+
+        // 2. Wallet
+        let tmpImg = null;
+        function calc() {
+            const v = document.getElementById('calc-input').value;
+            const r = parseFloat(document.getElementById('exchange-rate').value);
+            try {
+                if(!v) return;
+                const res = new Function('return '+v)();
+                document.getElementById('res-jpy').innerText = '¥' + Math.floor(res).toLocaleString();
+                document.getElementById('res-twd').innerText = '$' + Math.floor(res*r).toLocaleString();
+                document.getElementById('exp-amt').value = Math.floor(res);
+            } catch(e){}
+        }
+
+        function toggleDrawer(show) {
+            const d = document.getElementById('expense-drawer');
+            d.className = show ? "fixed inset-0 z-[60] block" : "fixed inset-0 z-[60] hidden";
+        }
+
+        function previewImg(input) {
+            if(input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const c = document.createElement('canvas');
+                        const ctx = c.getContext('2d');
+                        const sc = 300/img.width;
+                        c.width = 300; c.height = img.height*sc;
+                        ctx.drawImage(img,0,0,c.width,c.height);
+                        tmpImg = c.toDataURL('image/jpeg', 0.5);
+                        document.getElementById('img-check').classList.remove('hidden');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function getExps() { return JSON.parse(localStorage.getItem('trip_exps')||'[]'); }
+        function saveExp() {
+            const n = document.getElementById('exp-name').value;
+            const a = document.getElementById('exp-amt').value;
+            if(!n || !a) return alert('請輸入完整');
+            const exps = getExps();
+            exps.unshift({id:Date.now(), n, a:parseInt(a), img:tmpImg, d:new Date().toLocaleDateString()});
+            localStorage.setItem('trip_exps', JSON.stringify(exps));
+            renderExps();
+            toggleDrawer(false);
+            // Reset
+            document.getElementById('exp-name').value='';
+            document.getElementById('exp-amt').value='';
+            tmpImg=null; document.getElementById('img-check').classList.add('hidden');
+        }
+
+        function renderExps() {
+            const el = document.getElementById('expense-list');
+            el.innerHTML = '';
+            getExps().forEach(e => {
+                el.insertAdjacentHTML('beforeend', `
+                    <div class="card p-3 flex justify-between items-center shadow-sm">
+                        <div class="flex gap-3 items-center">
+                            ${e.img ? `<div class="w-10 h-10 rounded bg-cover bg-center" style="background-image:url(${e.img})" onclick="winOpen('${e.img}')"></div>` : '<div class="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-300"><i class="fas fa-receipt"></i></div>'}
+                            <div><div class="font-bold text-sm">${e.n}</div><div class="text-[10px] text-gray-400">${e.d}</div></div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-bold text-sm font-num">¥${e.a.toLocaleString()}</div>
+                            <button onclick="delExp(${e.id})" class="text-xs text-gray-300 p-1"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+        function delExp(id) { if(confirm('刪除?')) { localStorage.setItem('trip_exps', JSON.stringify(getExps().filter(e=>e.id!==id))); renderExps(); } }
+        function winOpen(u){ const w=window.open(""); w.document.write(`<img src="${u}" style="width:100%">`); }
+
+        // 3. Lists
+        function switchList(t) {
+            document.getElementById('view-packing').className = t==='packing'?'block':'hidden';
+            document.getElementById('view-memo').className = t==='memo'?'block':'hidden';
+            document.getElementById('tab-packing').className = t==='packing'?"flex-1 py-3 bg-yellow-50 text-yellow-800 font-bold text-sm border-b-2 border-yellow-600":"flex-1 py-3 text-gray-400 text-sm";
+            document.getElementById('tab-memo').className = t==='memo'?"flex-1 py-3 bg-yellow-50 text-yellow-800 font-bold text-sm border-b-2 border-yellow-600":"flex-1 py-3 text-gray-400 text-sm";
+        }
+        
+        // Packing
+        function getPack(){ return JSON.parse(localStorage.getItem('trip_pack')||JSON.stringify([{t:'護照',c:false},{t:'網卡',c:false}])); }
+        function renderPack(){
+            const c = document.getElementById('packing-container'); c.innerHTML='';
+            getPack().forEach((i,x)=>{
+                c.insertAdjacentHTML('beforeend', `
+                    <div class="flex items-center justify-between p-2 border-b border-gray-50" onclick="togPack(${x})">
+                        <div class="flex items-center gap-3">
+                            <div class="w-5 h-5 rounded border ${i.c?'bg-muji-green border-muji-green':'border-gray-300'} flex items-center justify-center transition-colors">
+                                ${i.c?'<i class="fas fa-check text-white text-xs"></i>':''}
+                            </div>
+                            <span class="${i.c?'text-gray-300 line-through':''}">${i.t}</span>
+                        </div>
+                        <button onclick="event.stopPropagation();delPack(${x})" class="text-gray-200"><i class="fas fa-times"></i></button>
+                    </div>
+                `);
+            });
+        }
+        function togPack(x){ const l=getPack(); l[x].c=!l[x].c; localStorage.setItem('trip_pack',JSON.stringify(l)); renderPack(); }
+        function addPack(){ const v=document.getElementById('new-pack').value; if(v){ const l=getPack(); l.push({t:v,c:false}); localStorage.setItem('trip_pack',JSON.stringify(l)); document.getElementById('new-pack').value=''; renderPack(); }}
+        function delPack(x){ const l=getPack(); l.splice(x,1); localStorage.setItem('trip_pack',JSON.stringify(l)); renderPack(); }
+
+        // Memo
+        function getMemo(){ return JSON.parse(localStorage.getItem('trip_memo')||'[]'); }
+        function renderMemo(){
+            const c=document.getElementById('memo-container'); c.innerHTML='';
+            getMemo().forEach(m=>{
+                let t = m.t.replace(/(http[s]?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="text-blue-500 underline">連結</a>');
+                c.insertAdjacentHTML('beforeend', `<div class="bg-yellow-50 p-2 text-sm rounded relative group">${t} <button onclick="delMemo(${m.id})" class="absolute top-1 right-1 text-gray-300"><i class="fas fa-times"></i></button></div>`);
+            });
+        }
+        function addMemo(){ const v=document.getElementById('new-memo').value; if(v){ const l=getMemo(); l.unshift({id:Date.now(),t:v}); localStorage.setItem('trip_memo',JSON.stringify(l)); document.getElementById('new-memo').value=''; renderMemo(); }}
+        function delMemo(id){ localStorage.setItem('trip_memo',JSON.stringify(getMemo().filter(m=>m.id!==id))); renderMemo(); }
+        
+        function openMap(q) { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`); }
+
+        // --- Init & Splash ---
+        window.onload = function() {
+            renderExps(); renderPack(); renderMemo();
+            
+            // Remove splash after delay
+            setTimeout(() => {
+                document.getElementById('splash-screen').classList.add('fade-out');
+                setTimeout(() => document.getElementById('splash-screen').style.display='none', 500);
+            }, 1200);
+
+            // Detect Standalone Mode
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            if (!isStandalone) {
+                // 如果不是 Standalone 模式，稍微延遲後顯示提示
+                setTimeout(() => {
+                    document.getElementById('install-prompt').classList.remove('hidden');
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
