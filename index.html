@@ -3,902 +3,1116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>北海道冬旅 | Hokkaido Winter Trip</title>
-    <meta name="apple-mobile-web-app-title" content="北海道冬旅">
+    <title>新潟紀行 | Niigata Trip Planner</title>
+    <meta name="apple-mobile-web-app-title" content="新潟紀行">
     <meta name="format-detection" content="telephone=no">
     <!-- Android Chrome 設定 -->
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#f0f9ff">
+    <meta name="theme-color" content="#fcfcf5">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome (Icons) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: Noto Sans TC & Lato -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Noto Sans TC (Main) & Lato (Numbers) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Lato:wght{400;700}&display=swap" rel="stylesheet">
     
-    <script type="module">
-        // --- Firebase Imports ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <script>
+        // --- PWA Setup and Icon Generation ---
+        (function() {
+            // Icon SVG (Stylized Torii)
+            const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                <rect width="512" height="512" fill="#fcfcf5" rx="100"/>
+                <!-- Main pillars -->
+                <rect x="100" y="150" width="30" height="300" fill="#a84c4c"/>
+                <rect x="382" y="150" width="30" height="300" fill="#a84c4c"/>
+                <!-- Upper crossbeam -->
+                <rect x="40" y="170" width="432" height="30" fill="#a84c4c"/>
+                <!-- Top beam -->
+                <rect x="70" y="130" width="372" height="30" fill="#a84c4c"/>
+                <!-- Central knot/decoration -->
+                <circle cx="256" cy="145" r="12" fill="#ffffff"/>
+            </svg>`;
+            const iconUrl = 'data:image/svg+xml;base64,' + btoa(iconSvg);
+            
+            // Set Favicon & Apple Icon
+            const setLink = (rel, href) => {
+                let link = document.createElement('link');
+                link.rel = rel;
+                link.href = href;
+                document.head.appendChild(link);
+            };
+            setLink('icon', iconUrl);
+            setLink('apple-touch-icon', iconUrl);
 
-        // --- Global Firebase & Auth State ---
-        let db;
-        let auth;
-        let userId = null;
-        let initialDataLoaded = { expenses: false, packing: false, memos: false };
+            // Generate Manifest JSON
+            const manifest = {
+                "name": "新潟紀行",
+                "short_name": "新潟紀行",
+                "start_url": location.href,
+                "display": "standalone",
+                "background_color": "#fcfcf5",
+                "theme_color": "#fcfcf5",
+                "orientation": "portrait",
+                "icons": [{ "src": iconUrl, "sizes": "512x512", "type": "image/svg+xml" }]
+            };
+            
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            setLink('manifest', manifestURL);
+        })();
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hokkaido-2026';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        // --- Tailwind Configuration (日系插圖風) ---
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'jp-bg': '#fcfcf5',     // Creamy Background
+                        'jp-card': '#ffffff',   // White Card
+                        'jp-text': '#333333',   // Deep Charcoal Text
+                        'jp-accent': '#a84c4c', // Muted Terracotta Red
+                        'jp-sub': '#6d8b67',    // Sage Green
+                        'jp-border': '#e0e0e0', // Light Border
+                        'jp-light': '#f5f5f0',  // Very light gray
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        num: ['"Lato"', 'sans-serif']
+                    },
+                    padding: {
+                        'safe-top': 'env(safe-area-inset-top)',
+                        'safe-bottom': 'env(safe-area-inset-bottom)',
+                    }
+                }
+            }
+        }
+    </script>
 
-        // --- Toast Logic ---
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const item = document.createElement('div');
-            item.className = 'toast-item';
-            item.textContent = message;
-            if (type === 'error') item.style.backgroundColor = '#ef4444';
-            container.prepend(item);
-            setTimeout(() => item.classList.add('show'), 10);
-            setTimeout(() => { item.classList.remove('show'); setTimeout(() => item.remove(), 300); }, 3000);
+    <style>
+        body {
+            background-color: #fcfcf5;
+            color: #333333;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            overscroll-behavior-y: none;
+            /* Adjust padding for 4-item nav bar */
+            padding-bottom: calc(80px + env(safe-area-inset-bottom)); 
+            min-height: 100vh;
         }
 
-        // --- Core Functions Export to Window ---
-        window.openMap = (q) => { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`, '_blank'); };
+        input, textarea { user-select: text; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         
-        window.toggleDrawer = (show) => {
+        .plan-page { display: none; }
+        .plan-page.active { display: block; }
+
+        .jp-input {
+            border: 1px solid #e0e0e0;
+            background-color: #ffffff;
+            border-radius: 10px; 
+            padding: 12px;
+            width: 100%;
+            outline: none;
+            appearance: none;
+            font-size: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .jp-input:focus { border-color: #a84c4c; box-shadow: 0 0 0 2px rgba(168, 76, 76, 0.2); }
+
+        .btn-primary {
+            background-color: #a84c4c;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 500;
+            transition: transform 0.1s ease-in-out, opacity 0.2s;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 6px rgba(168, 76, 76, 0.3);
+        }
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; box-shadow: 0 2px 4px rgba(168, 76, 76, 0.4); }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06); 
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #f0f0f0;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        .card-clickable:active { transform: scale(0.98); background-color: #fcfcfc; }
+
+        /* Time Highlight */
+        .time-highlight {
+            font-weight: 700;
+            color: #a84c4c; /* Accent Red */
+            background-color: #fff3f3;
+            padding: 4px 8px;
+            border-radius: 6px;
+            line-height: 1;
+        }
+
+        /* Weather Bar Styling */
+        .weather-bar {
+            background-color: #6d8b67; /* jp-sub */
+            color: white;
+            box-shadow: 0 4px 10px rgba(109, 139, 103, 0.3);
+            cursor: pointer; /* To indicate it's clickable (for info) */
+        }
+        .weather-bar:active { transform: scale(0.98); }
+
+
+        /* Splash Screen & Animation */
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #fcfcf5; z-index: 9999;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+            transition: opacity 0.5s ease-out, visibility 0.5s;
+        }
+        .fade-out { opacity: 0; visibility: hidden; }
+
+        header { padding-top: max(12px, env(safe-area-inset-top)); }
+        nav { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+        
+        /* Magazine/Guide Styling */
+        .guide-article {
+            background: #ffffff;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            line-height: 1.8;
+            font-size: 15px;
+            border-left: 5px solid #6d8b67;
+        }
+
+        /* Sub-navigation bar for daily itinerary */
+        .sub-nav-item {
+            padding: 10px 0;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.2s, border-bottom 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+        .sub-nav-item.active {
+            color: #a84c4c;
+            border-bottom-color: #a84c4c;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Splash Screen -->
+    <div id="splash-screen">
+        <div class="mb-4">
+            <!-- Splash Icon (Torii) -->
+            <svg width="100" height="100" viewBox="0 0 512 512">
+                <rect x="100" y="150" width="30" height="300" fill="#a84c4c"/>
+                <rect x="382" y="150" width="30" height="300" fill="#a84c4c"/>
+                <rect x="40" y="170" width="432" height="30" fill="#a84c4c"/>
+                <rect x="70" y="130" width="372" height="30" fill="#a84c4c"/>
+                <circle cx="256" cy="145" r="12" fill="#ffffff"/>
+            </svg>
+        </div>
+        <h1 class="text-3xl font-bold text-jp-text tracking-widest mt-2">新潟紀行</h1>
+        <p class="text-xs text-jp-accent mt-3 font-num">Autumn Niigata Trip Planner</p>
+    </div>
+
+    <!-- Header (Fixed Top) -->
+    <header class="fixed top-0 w-full bg-jp-bg/90 backdrop-blur-md z-40 px-4 pb-3 border-b border-jp-border/50 flex justify-between items-end h-[calc(65px+env(safe-area-inset-top))]">
+        <div>
+            <h1 class="text-xl font-bold tracking-widest text-jp-text">新潟紀行</h1>
+            <p class="text-[10px] text-jp-sub tracking-wider font-num">Let's go Niigata</p>
+        </div>
+        <div class="text-right">
+            <span class="text-[10px] bg-jp-accent text-white px-3 py-1 rounded-full font-num shadow-sm">2026 AUTUMN</span>
+        </div>
+    </header>
+
+    <main class="mt-[calc(75px+env(safe-area-inset-top))] px-4 pb-4" id="app">
+        
+        <!-- SECTION 1: PLAN (Overview + Daily Tabs) -->
+        <div id="section-plan" class="tab-content active">
+
+            <!-- Sub-Navigation for Daily Plan -->
+            <div class="sticky top-[calc(75px+env(safe-area-inset-top))] z-30 bg-jp-bg/95 backdrop-blur-sm pt-2 pb-1 -mx-4 px-4 border-b border-jp-border">
+                <div class="flex justify-between text-center text-gray-500">
+                    <button id="subnav-overview" class="sub-nav-item active flex-1" onclick="switchPlanPage('overview')">總覽</button>
+                    <button id="subnav-day1" class="sub-nav-item flex-1" onclick="switchPlanPage('day1')">Day 1</button>
+                    <button id="subnav-day2" class="sub-nav-item flex-1" onclick="switchPlanPage('day2')">Day 2</button>
+                    <button id="subnav-day3" class="sub-nav-item flex-1" onclick="switchPlanPage('day3')">Day 3</button>
+                    <button id="subnav-day4" class="sub-nav-item flex-1" onclick="switchPlanPage('day4')">Day 4</button>
+                </div>
+            </div>
+
+            <!-- SUB-PAGE: OVERVIEW -->
+            <div id="plan-page-overview" class="plan-page active pt-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">旅行總覽</h2>
+                
+                <!-- Cover Page (Torii Icon) -->
+                <div class="card p-5 mb-6 text-center shadow-lg bg-jp-sub/10">
+                    <!-- NEW TORII ICON -->
+                    <svg class="mx-auto mb-3" width="60" height="60" viewBox="0 0 512 512">
+                        <rect x="100" y="150" width="30" height="300" fill="#a84c4c"/>
+                        <rect x="382" y="150" width="30" height="300" fill="#a84c4c"/>
+                        <rect x="40" y="170" width="432" height="30" fill="#a84c4c"/>
+                        <rect x="70" y="130" width="372" height="30" fill="#a84c4c"/>
+                        <circle cx="256" cy="145" r="12" fill="#ffffff"/>
+                    </svg>
+                    <h3 class="text-2xl font-bold text-jp-text mb-2">2026/10/16 - 10/19 新潟四日紀行</h3>
+                    <p class="text-sm text-gray-600">悠閒與深度並存的越後之旅</p>
+                </div>
+                
+                <!-- Weather Forecast Block -->
+                <div class="weather-bar text-white p-4 rounded-xl mb-6">
+                    <h3 class="text-lg font-bold mb-3 flex items-center">
+                        <i class="fas fa-cloud-sun text-xl mr-2"></i>
+                        新潟天氣預報 (10/16 - 10/19)
+                    </h3>
+                    <div class="grid grid-cols-4 gap-2 text-center text-sm font-medium">
+                        <!-- Day 1: 10/16 (五) -->
+                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                            <p class="text-xs">10/16 (五)</p><p class="text-xl my-0.5">☁️</p>
+                            <p class="text-xs font-num">18° / 24°</p><p class="text-xs">多雲</p>
+                        </div>
+                        <!-- Day 2: 10/17 (六) -->
+                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                            <p class="text-xs">10/17 (六)</p><p class="text-xl my-0.5">☀️</p>
+                            <p class="text-xs font-num">20° / 26°</p><p class="text-xs">晴朗</p>
+                        </div>
+                        <!-- Day 3: 10/18 (日) -->
+                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                            <p class="text-xs">10/18 (日)</p><p class="text-xl my-0.5">☔</p>
+                            <p class="text-xs font-num">19° / 23°</p><p class="text-xs">陣雨</p>
+                        </div>
+                        <!-- Day 4: 10/19 (一) -->
+                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                            <p class="text-xs">10/19 (一)</p><p class="text-xl my-0.5">🌤️</p>
+                            <p class="text-xs font-num">18° / 25°</p><p class="text-xs">多雲時晴</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flight Info -->
+                <div id="plan-flight" class="mb-6">
+                    <h3 class="text-lg font-bold text-jp-sub mb-3">✈️ 航班資訊</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="card p-3 bg-jp-accent/5">
+                            <p class="text-xs font-bold text-jp-accent mb-1">去程 | IT228</p>
+                            <div class="flex items-center justify-between text-lg font-num font-bold">
+                                <span>TPE 13:45</span><i class="fas fa-arrow-right text-xs"></i><span>KIJ 18:00</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">長榮航空 / 預計 4 小時 15 分鐘</p>
+                        </div>
+                        <div class="card p-3 bg-jp-accent/5">
+                            <p class="text-xs font-bold text-jp-accent mb-1">回程 | IT229</p>
+                            <div class="flex items-center justify-between text-lg font-num font-bold">
+                                <span>KIJ 18:50</span><i class="fas fa-arrow-right text-xs"></i><span>TPE 21:25</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">長榮航空 / 預計 3 小時 35 分鐘</p>
+                        </div>
+                    </div>
+                </div>
+
+                 <!-- Pre-trip Prep -->
+                <div id="plan-prep" class="mb-6">
+                    <h3 class="text-lg font-bold text-jp-sub mb-3">✅ 行前準備與提醒</h3>
+                    <div class="card p-4">
+                        <div class="flex items-center gap-3 mb-3 pb-3 border-b border-jp-light">
+                            <i class="fas fa-bed text-xl text-gray-500"></i>
+                            <div class="flex-1">
+                                <span class="font-bold">住宿確認</span>
+                                <p class="text-xs text-jp-accent mt-0.5">尚未決定，請儘速預訂！</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <i class="fas fa-ticket-alt text-xl text-gray-500"></i>
+                            <div class="flex-1">
+                                <span class="font-bold">JR 越後線車資</span>
+                                <p class="text-xs text-gray-500 mt-0.5">建議使用 Suica 或購買 JR Pass。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SUB-PAGE: DAY 1 -->
+            <div id="plan-page-day1" class="plan-page pt-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">第一天 (10/16 Fri) | 抵達與萬代橋夜景</h2>
+                
+                <!-- NEW: Daily Weather Bar -->
+                <div id="weather-day-1"></div>
+
+                <div class="space-y-3">
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">18:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">新潟機場 (KIJ) 抵達</div>
+                            <p class="text-sm text-gray-600 mt-1">領取行李、購買巴士票。</p>
+                            <button onclick="openMap('新潟空港')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight bg-jp-accent text-white">18:00-19:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚌 機場巴士前往新潟站</div>
+                            <p class="text-sm text-red-500 mt-1 font-bold">全程唯一巴士區段，請注意班次。</p>
+                            <button onclick="openMap('新潟駅')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps (目的地)</button>
+                        </div>
+                    </div>
+                     <div class="card flex items-start gap-3">
+                        <span class="time-highlight">19:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🏠 新潟站周邊，辦理入住</div>
+                            <p class="text-sm text-gray-600 mt-1">地點待定，請準備護照。</p>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">19:30-21:30</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🍽️ 晚餐：新潟站周邊美食</div>
+                            <p class="text-sm text-gray-600 mt-1">推薦：當地壽司或 へぎそば (Hegi Soba)</p>
+                            <div class="flex gap-2 mt-2">
+                                <button onclick="openMap('新潟駅 壽司')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                                <button onclick="openFood('新潟站 美食')" class="text-xs bg-jp-light text-gray-600 py-1 px-3 rounded-full"><i class="fas fa-utensils mr-1"></i> 查看食記</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">21:30</span>
+                        <div class="flex-1">
+                            <div class="font-bold">萬代橋 夜景散步</div>
+                            <p class="text-sm text-gray-600 mt-1">欣賞信濃川迷人夜景，消化晚餐。</p>
+                            <button onclick="openMap('萬代橋')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SUB-PAGE: DAY 2 -->
+            <div id="plan-page-day2" class="plan-page pt-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">第二天 (10/17 Sat) | 文青與夕陽</h2>
+                
+                <!-- NEW: Daily Weather Bar -->
+                <div id="weather-day-2"></div>
+
+                <div class="space-y-3">
+                     <div class="card flex items-start gap-3">
+                        <span class="time-highlight">09:00-10:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🍶 Ponshukan 驛店 (ぽんしゅ館)</div>
+                            <p class="text-sm text-gray-600 mt-1">清酒投幣試飲，感受新潟米魂。</p>
+                            <button onclick="openMap('ぽんしゅ館 新潟')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">10:30-13:40</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚶 沼垂露臺商店街 (2.0 km)</div>
+                            <p class="text-sm text-gray-600 mt-1">文創散策，舊市場區的文青重生氛圍。於此處享用午餐。</p>
+                            <button onclick="openMap('沼垂テラス商店街')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                     <div class="card flex items-start gap-3">
+                        <span class="time-highlight">13:40-15:10</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚶 白山神社與白山公園 (2.5 km)</div>
+                            <p class="text-sm text-gray-600 mt-1">日系初秋的莊嚴與城市綠意。</p>
+                            <button onclick="openMap('白山神社')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">16:00-17:30</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🏙️ 新潟日報傳媒大廈 (Media Ship)</div>
+                            <p class="text-sm text-gray-600 mt-1">免費觀景台，觀賞日落和信濃川美景。</p>
+                            <button onclick="openMap('新潟日報メディアシップ')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">17:30-21:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🛍️ 萬代City 購物與晚餐</div>
+                            <p class="text-sm text-gray-600 mt-1">晚餐推薦：萬代City 周邊 (步行可達)。</p>
+                            <button onclick="openMap('萬代シティ')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SUB-PAGE: DAY 3 -->
+            <div id="plan-page-day3" class="plan-page pt-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">第三天 (10/18 Sun) | 彌彥神社與海岸線</h2>
+                
+                <!-- NEW: Daily Weather Bar -->
+                <div id="weather-day-3"></div>
+                
+                <div class="space-y-3">
+                    <div class="card flex items-start gap-3 bg-red-50 border-red-200">
+                        <span class="time-highlight bg-red-600 text-white">07:30</span>
+                        <div class="flex-1">
+                            <div class="font-bold text-red-800">🚃 JR 越後線 出發</div>
+                            <p class="text-sm text-red-600 mt-1 font-bold">於 <span class="underline">吉田站 (Yoshida)</span> 轉乘 JR 彌彥線。單程約 70 分鐘。</p>
+                            <button onclick="openMap('JR 弥彦駅')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps (目的地)</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">08:40-12:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">⛩️ 彌彥神社區域巡禮</div>
+                            <p class="text-sm text-gray-600 mt-1">老街散步、神社參拜、可搭纜車上山。</p>
+                            <button onclick="openMap('彌彥神社')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">12:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🍽️ 彌彥站周邊午餐</div>
+                            <p class="text-sm text-gray-600 mt-1">在老街附近尋找特色餐廳。</p>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">13:30-14:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚃 JR 彌彥線 → 白山站</div>
+                            <p class="text-sm text-gray-600 mt-1">搭乘短途 JR 前往白山。</p>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">14:25-16:40</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚶 新潟縣護國神社 (1.8 km 步行)</div>
+                            <p class="text-sm text-gray-600 mt-1">靠近海岸線的宏偉神社，感受莊嚴氛圍。</p>
+                            <button onclick="openMap('新潟県護国神社')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">17:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🚃 JR 白山站返回新潟站</div>
+                            <p class="text-sm text-gray-600 mt-1">準備晚餐。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-PAGE: DAY 4 -->
+            <div id="plan-page-day4" class="plan-page pt-4">
+                <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">第四天 (10/19 Mon) | 購物與賦歸</h2>
+                
+                <!-- NEW: Daily Weather Bar -->
+                <div id="weather-day-4"></div>
+
+                <div class="space-y-3">
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">09:30-12:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🛍️ 購物衝刺：CoCoLo Niigata</div>
+                            <p class="text-sm text-gray-600 mt-1">重點補貨：清酒、新潟米、米菓仙貝、在地甜點。</p>
+                            <button onclick="openMap('CoCoLo 新潟')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3">
+                        <span class="time-highlight">12:00-14:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold">🍽️ 最後午餐</div>
+                            <p class="text-sm text-gray-600 mt-1">推薦：車站周邊海鮮 或 萬代City 巴士中心咖哩。</p>
+                            <button onclick="openMap('萬代シティバスセンターのカレー')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps</button>
+                        </div>
+                    </div>
+                    <div class="card flex items-start gap-3 bg-red-50 border-red-200">
+                        <span class="time-highlight bg-red-600 text-white">15:30-16:00</span>
+                        <div class="flex-1">
+                            <div class="font-bold text-red-800">🛫 前往新潟機場 (KIJ)</div>
+                            <p class="text-sm text-red-600 mt-1 font-bold">搭乘巴士或計程車。預留充裕時間。</p>
+                            <button onclick="openMap('新潟空港')" class="text-xs bg-jp-sub/10 text-jp-sub py-1 px-3 rounded-full mt-2"><i class="fas fa-map-marker-alt mr-1"></i> Google Maps (目的地)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="h-20"></div> <!-- Spacer -->
+        </div>
+
+        <!-- SECTION 2: GUIDE (Magazine Style) -->
+        <div id="section-guide" class="tab-content">
+            <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-sub pl-3">深度導覽</h2>
+            
+             <!-- NEW: Map Quick Links -->
+            <div class="mb-8">
+                 <h3 class="font-bold text-lg text-jp-accent mb-3 flex items-center"><i class="fas fa-compass mr-2"></i> 地點快速導航 (Google Maps)</h3>
+                 <div class="grid grid-cols-2 gap-3" id="poi-quick-links">
+                     <!-- Populated by JavaScript -->
+                 </div>
+            </div>
+
+            <!-- Guide Item 1: 彌彥神社 -->
+            <div class="guide-article">
+                <h3 class="font-bold text-lg text-jp-accent mb-3">⛩️ 彌彥神社 (D3)</h3>
+                <p class="text-gray-700">彌彥神社被尊為「越後一宮」，供奉著教導越後人們農耕漁獵的神明「天香山命」。這裡古木參天，氣氛莊嚴，是新潟縣內最具代表性的能量景點。在神社周邊的老街區，可以找到許多當地特色的傳統點心與美食。</p>
+                <div class="mt-4 pt-4 border-t border-jp-border">
+                    <h4 class="text-sm font-bold text-jp-sub mb-2">交通提示</h4>
+                    <p class="text-xs text-gray-600">從新潟市區需搭乘 JR 越後線並在吉田站轉乘 JR 彌彥線，建議查詢好當日列車時刻表。</p>
+                </div>
+            </div>
+
+            <!-- Guide Item 2: 沼垂露臺商店街 -->
+            <div class="guide-article">
+                <h3 class="font-bold text-lg text-jp-accent mb-3">🛍️ 沼垂露臺商店街 (D2)</h3>
+                <p class="text-gray-700">從舊市場蛻變而成的文創聚落，充滿了懷舊的長屋建築。每間店鋪都獨具特色，包括獨立咖啡館、手工藝品店和特色餐廳，是感受新潟城市文青氣息的絕佳地點。</p>
+                <div class="mt-4 pt-4 border-t border-jp-border">
+                    <h4 class="text-sm font-bold text-jp-sub mb-2">參觀建議</h4>
+                    <p class="text-xs text-gray-600">商店街週二公休居多，請避開此日期。建議上午至中午前往，人潮較少且氣氛悠閒。</p>
+                </div>
+            </div>
+            
+            <!-- Guide Item 3: 新潟縣護國神社 -->
+            <div class="guide-article">
+                <h3 class="font-bold text-lg text-jp-accent mb-3">🌊 新潟縣護國神社 (D3)</h3>
+                <p class="text-gray-700">護國神社靠近海岸線，境內廣闊且環境優美，是為了紀念為國犧牲的英靈而建立。其宏偉的規模與莊嚴的氛圍，與周邊的城市景觀形成了鮮明的對比。</p>
+                <div class="mt-4 pt-4 border-t border-jp-border">
+                    <h4 class="text-sm font-bold text-jp-sub mb-2">周邊景點</h4>
+                    <p class="text-xs text-gray-600">沿著海岸線散步可到達「西海岸公園」，天氣好時是欣賞日本海夕陽的絕佳位置。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: UTILITY (Accounting + Info/Contacts) - MERGED SECTION -->
+        <div id="section-util" class="tab-content">
+            <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">公用工具與記帳</h2>
+            
+            <!-- Sub-Section 1: Calculator & Expense Tracking -->
+            <div class="mb-8">
+                 <h3 class="text-lg font-bold text-jp-sub mb-3"><i class="fas fa-calculator mr-2"></i>匯率計算與記帳</h3>
+                <!-- Calculator Card (Sticky is removed here, for easier scrolling) -->
+                <div class="card bg-jp-sub/10 border-0 mb-4">
+                    <div class="flex items-center justify-between mb-2 opacity-80">
+                        <label class="text-xs font-bold text-jp-text">匯率 (JPY → TWD)</label>
+                        <input type="number" id="exchange-rate" value="0.220" class="w-20 text-right bg-transparent border-b border-jp-sub text-sm font-num focus:outline-none" oninput="calc()" step="0.001">
+                    </div>
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" id="calc-input" placeholder="500+200*3" class="jp-input py-2 flex-1 text-xl font-num shadow-inner" inputmode="decimal" onkeyup="if(event.key==='Enter')calc()">
+                        <button onclick="calc()" class="bg-jp-accent text-white w-14 rounded-xl shadow-md active:scale-95"><i class="fas fa-calculator text-lg"></i></button>
+                    </div>
+                    <div class="flex justify-between items-end mt-1">
+                        <div class="text-2xl font-bold font-num text-jp-text" id="res-jpy">¥0</div>
+                        <div class="text-xl font-bold font-num text-jp-sub" id="res-twd">TWD $0</div>
+                    </div>
+                </div>
+
+                <!-- Quick Add -->
+                <button onclick="toggleDrawer(true)" class="w-full bg-jp-card border border-dashed border-jp-border text-jp-text py-3 rounded-xl mb-4 hover:bg-jp-light active:scale-98 transition-transform">
+                    <i class="fas fa-plus mr-1 text-jp-sub"></i> 新增一筆支出
+                </button>
+                
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold text-jp-text">消費記錄</h3>
+                    <button onclick="clearExpHistory()" class="text-xs text-red-400 hover:text-red-600"><i class="fas fa-trash-alt mr-1"></i>清除所有記錄</button>
+                </div>
+
+                <!-- List -->
+                <div id="expense-list" class="space-y-2"></div>
+            </div>
+            
+            <!-- Sub-Section 2: Important Info and Contacts (Content moved from old section-info) -->
+            <div class="mb-6">
+                 <h3 class="text-lg font-bold text-jp-sub mb-3"><i class="fas fa-info-circle mr-2"></i>重要資訊與提示</h3>
+                <!-- Quick Links -->
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <a href="https://www.jma.go.jp/bosai/forecast/" target="_blank" class="card flex flex-col items-center justify-center py-5 active:scale-95 bg-blue-50">
+                        <i class="fas fa-cloud-sun text-3xl text-blue-500 mb-2"></i>
+                        <span class="font-bold text-sm">當地天氣預報</span>
+                        <span class="text-xs text-gray-500 mt-1">日本氣象廳</span>
+                    </a>
+                    <a href="tel:+81-110" class="card flex flex-col items-center justify-center py-5 active:scale-95 bg-red-50">
+                        <i class="fas fa-phone-alt text-3xl text-red-500 mb-2"></i>
+                        <span class="font-bold text-sm">緊急聯繫 (警察)</span>
+                        <span class="text-xs text-gray-500 mt-1">點擊撥打：110</span>
+                    </a>
+                </div>
+
+                <!-- Travel Tips -->
+                <div class="card p-5">
+                    <h3 class="font-bold text-lg text-jp-accent mb-3">✈️ 旅遊注意事項</h3>
+                    <ul class="text-sm space-y-3 list-disc pl-5 text-gray-700">
+                        <li>**虎航手提行李：** 每人限 2 件，總重不超過 10 公斤。務必注意尺寸限制。</li>
+                        <li>**液體容量：** 隨身行李液體單瓶不超過 100ml，總容量不超過 1L，需裝入透明密封袋。</li>
+                        <li>**海關申報：** 攜帶現金超過 100 萬日圓或等值物品需申報。肉製品、生果嚴禁帶入。</li>
+                        <li>**充電禮儀：** 在公共場所（如車站、餐廳）未經允許請勿自行插電充電。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="h-20"></div> <!-- Spacer -->
+        </div>
+
+        <!-- SECTION 4: LISTS (Checklist & Memo) -->
+        <div id="section-lists" class="tab-content">
+            <h2 class="text-xl font-bold text-jp-text mb-4 border-l-4 border-jp-accent pl-3">清單 & 備忘</h2>
+            <div class="bg-jp-card rounded-xl shadow-lg overflow-hidden min-h-[400px]">
+                <div class="flex border-b border-jp-border">
+                    <button onclick="switchList('packing')" id="tab-packing" class="flex-1 py-3 bg-jp-accent/10 text-jp-accent font-bold text-sm border-b-2 border-jp-accent transition-all">✅ 行前準備</button>
+                    <button onclick="switchList('memo')" id="tab-memo" class="flex-1 py-3 text-gray-400 text-sm transition-all">📝 個人備忘錄</button>
+                </div>
+                <div class="p-4" id="list-content">
+                    <!-- Packing -->
+                    <div id="view-packing">
+                        <div id="packing-container" class="space-y-2"></div>
+                        <div class="mt-4 flex gap-2">
+                            <input type="text" id="new-pack" class="jp-input py-2 text-sm" placeholder="新增旅行必備品...">
+                            <button onclick="addPack()" class="btn-primary py-2 px-4 shadow-none"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <!-- Memo -->
+                    <div id="view-memo" class="hidden">
+                        <div id="memo-container" class="space-y-3 mb-4"></div>
+                        <textarea id="new-memo" class="jp-input text-sm" rows="3" placeholder="輸入備忘內容，網址會自動轉換成連結。"></textarea>
+                        <button onclick="addMemo()" class="btn-primary w-full mt-2 shadow-md bg-jp-sub">儲存備忘</button>
+                    </div>
+                </div>
+            </div>
+            <div class="h-20"></div> <!-- Spacer -->
+        </div>
+
+    </main>
+
+    <!-- Bottom Nav (Normalized Utility Icon) -->
+    <nav class="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-gray-200 pb-safe z-50">
+        <div class="flex justify-around items-center h-[65px]">
+            <button onclick="nav('plan')" class="nav-item active flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-route text-lg mb-1"></i><span class="text-[10px]">行程</span>
+            </button>
+            <button onclick="nav('guide')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-book-open text-lg mb-1"></i><span class="text-[10px]">導覽</span>
+            </button>
+            <!-- CHANGE 2: Normalized Utility Icon -->
+            <button onclick="nav('util')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-wallet text-lg mb-1"></i><span class="text-[10px]">記帳</span>
+            </button>
+            <button onclick="nav('lists')" class="nav-item flex-1 h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-check-square text-lg mb-1"></i><span class="text-[10px]">清單</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Expense Drawer (For Utility Add) -->
+    <div id="expense-drawer" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="toggleDrawer(false)"></div>
+        <div class="absolute bottom-0 w-full bg-white rounded-t-2xl p-5 pb-safe animate-slide-up shadow-2xl">
+            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4"></div>
+            <h3 class="text-center font-bold mb-4 text-lg">新增消費記錄</h3>
+            <input type="text" id="exp-name" class="jp-input mb-3" placeholder="品項名稱 (如: 晚餐/清酒)">
+            <input type="number" id="exp-amt" class="jp-input mb-4 text-xl font-num" placeholder="日幣金額 (JPY)">
+            
+            <div class="flex items-center gap-2 mb-5">
+                <label class="flex-1 border border-dashed border-jp-sub/50 rounded-lg p-3 text-center text-gray-600 text-sm active:bg-jp-light">
+                    <i class="fas fa-camera mr-2 text-jp-sub"></i> 拍照存證 (自動壓縮)
+                    <input type="file" id="exp-img" accept="image/*" class="hidden" capture="environment" onchange="previewImg(this)">
+                </label>
+                <div id="img-check" class="hidden text-green-500 flex-shrink-0"><i class="fas fa-check-circle text-2xl"></i></div>
+            </div>
+
+            <button onclick="saveExp()" class="btn-primary w-full text-lg shadow-xl bg-jp-accent">確定儲存</button>
+        </div>
+    </div>
+
+    <style>
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        .nav-item.active { color: #a84c4c; font-weight: 500; }
+    </style>
+
+    <script>
+        // --- Global Data (For Weather and POI) ---
+        const tripWeather = [
+            { date: '10/16 (五)', temp: '18° / 24°', icon: '☁️', desc: '多雲', dayText: '第一天' },
+            { date: '10/17 (六)', temp: '20° / 26°', icon: '☀️', desc: '晴朗', dayText: '第二天' },
+            { date: '10/18 (日)', temp: '19° / 23°', icon: '☔', desc: '陣雨', dayText: '第三天' },
+            { date: '10/19 (一)', temp: '18° / 25°', icon: '🌤️', desc: '多雲時晴', dayText: '第四天' },
+        ];
+        
+        // CHANGE 3: Consolidated POI List for Quick Links
+        const tripPOIs = [
+            { name: '新潟機場 (KIJ)', query: '新潟空港', day: 'D1, D4' },
+            { name: '新潟站 (Niigata Sta.)', query: '新潟駅', day: 'D1' },
+            { name: '萬代橋', query: '萬代橋', day: 'D1' },
+            { name: 'Ponshukan (ぽんしゅ館)', query: 'ぽんしゅ館 新潟', day: 'D2' },
+            { name: '沼垂露臺商店街', query: '沼垂テラス商店街', day: 'D2' },
+            { name: '白山神社', query: '白山神社', day: 'D2' },
+            { name: '新潟日報傳媒大廈', query: '新潟日報メディアシップ', day: 'D2' },
+            { name: '萬代City', query: '萬代シティ', day: 'D2' },
+            { name: '彌彥神社', query: '彌彥神社', day: 'D3' },
+            { name: '新潟縣護國神社', query: '新潟県護国神社', day: 'D3' },
+            { name: 'CoCoLo Niigata', query: 'CoCoLo 新潟', day: 'D4' },
+            { name: '巴士中心咖哩', query: '萬代シティバスセンターのカレー', day: 'D4' },
+        ];
+
+        let tmpImg = null; // Temp storage for Base64 image during expense creation
+
+        // 1. Navigation (Main Tabs: plan, guide, util, lists)
+        function nav(id) {
+            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+            document.getElementById('section-' + id).classList.add('active');
+            
+            // 1. Reset all nav items
+            document.querySelectorAll('.nav-item').forEach(e => {
+                e.classList.remove('active');
+                e.querySelector('i')?.classList.remove('text-jp-accent');
+            });
+
+            // 2. Find current button and set active style
+            const navItems = document.querySelectorAll('.nav-item');
+            const navIds = ['plan', 'guide', 'util', 'lists'];
+            const idx = navIds.indexOf(id);
+
+            if (idx !== -1) {
+                const currentNavItem = navItems[idx];
+                currentNavItem.classList.add('active');
+                // The icon is the first 'i' tag child in the button
+                const icon = currentNavItem.querySelector('i');
+                if (icon) icon.classList.add('text-jp-accent');
+            }
+            window.scrollTo(0,0);
+        }
+
+        // 1.1. Plan Sub-Navigation (Overview, Day 1-4)
+        function switchPlanPage(pageId) {
+            document.querySelectorAll('.plan-page').forEach(e => e.classList.remove('active'));
+            document.getElementById('plan-page-' + pageId).classList.add('active');
+            
+            document.querySelectorAll('.sub-nav-item').forEach(e => e.classList.remove('active'));
+            document.getElementById('subnav-' + pageId).classList.add('active');
+            
+            window.scrollTo(0,0); // Scroll to top when switching sub-pages
+        }
+
+        // Utility: Open Map/Food Search 
+        function openMap(q) { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('新潟 ' + q)}`, '_blank'); }
+        function openFood(q) { window.open(`https://www.google.com/search?q=${encodeURIComponent('新潟 ' + q + ' 食記')}`, '_blank'); }
+
+        // --- Weather Bar Function (CHANGE 1 helper) ---
+        function getWeatherBarHtml(dayIndex) {
+            if (dayIndex >= 0 && dayIndex < tripWeather.length) {
+                const w = tripWeather[dayIndex];
+                return `
+                    <div class="weather-bar text-white p-3 rounded-xl mb-4 flex items-center justify-between shadow-md" onclick="window.open('https://www.jma.go.jp/bosai/forecast/','_blank')">
+                        <div class="flex items-center">
+                            <span class="text-3xl mr-3">${w.icon}</span>
+                            <div>
+                                <p class="text-sm font-bold">${w.dayText} (${w.date.split(' ')[0]}) 天氣</p>
+                                <p class="text-xs">${w.desc} | ${w.temp}</p>
+                            </div>
+                        </div>
+                        <div class="text-xs font-medium bg-white/20 px-2 py-1 rounded-full"><i class="fas fa-external-link-alt mr-1"></i> 查看詳情</div>
+                    </div>
+                `;
+            }
+            return '';
+        }
+        
+        // --- POI Quick Links Renderer (CHANGE 3 implementation) ---
+        function renderPoiQuickLinks() {
+            const container = document.getElementById('poi-quick-links');
+            if (!container) return;
+
+            container.innerHTML = tripPOIs.map(poi => `
+                <button onclick="openMap('${poi.query}')" class="card flex flex-col items-start justify-center p-3 text-left active:scale-98 hover:bg-jp-light/50 transition-transform">
+                    <span class="font-bold text-sm text-jp-text">${poi.name}</span>
+                    <span class="text-xs text-jp-sub mt-1"><i class="fas fa-map-marker-alt mr-1"></i> ${poi.day}</span>
+                </button>
+            `).join('');
+        }
+
+
+        // 2. UTILITY Logic (Calculator, Photo Compression, Expense Save/Render)
+
+        function calc() {
+            const v = document.getElementById('calc-input').value;
+            const r = parseFloat(document.getElementById('exchange-rate').value);
+            
+            if (isNaN(r) || !v) {
+                document.getElementById('res-jpy').innerText = '¥0';
+                document.getElementById('res-twd').innerText = 'TWD $0';
+                document.getElementById('exp-amt').value = '';
+                return;
+            }
+
+            try {
+                // Use Function() to safely evaluate the math expression
+                const res = new Function('return '+v.replace(/[^\d\+\-\*\/\.]/g, ''))();
+                
+                const jpy = Math.floor(res);
+                const twd = Math.floor(res * r);
+                
+                document.getElementById('res-jpy').innerText = '¥' + jpy.toLocaleString('ja-JP');
+                document.getElementById('res-twd').innerText = 'TWD $' + twd.toLocaleString('zh-TW');
+                
+                document.getElementById('exp-amt').value = jpy;
+
+            } catch(e){
+                document.getElementById('res-jpy').innerText = '¥??';
+                document.getElementById('res-twd').innerText = 'TWD $??';
+            }
+        }
+
+        function toggleDrawer(show) {
             const d = document.getElementById('expense-drawer');
             d.style.display = show ? "block" : "none";
             if (!show) {
                 document.getElementById('exp-name').value = '';
                 document.getElementById('exp-amt').value = '';
-                window.tmpImg = null;
-                document.getElementById('exp-img').value = '';
                 document.getElementById('img-check').classList.add('hidden');
-                document.getElementById('type-cash').checked = true;
-                // Reset visual style
-                document.getElementById('label-cash').style.cssText = `background-color: #ffffff; border: 1px solid #3b82f6; color: #3b82f6;`;
-                document.getElementById('label-credit').style.cssText = '';
+                tmpImg = null;
             }
-        };
+        }
         
-        window.winOpen = (u) => { const w=window.open(""); w.document.write(`<img src="${u}" style="width:100%">`); };
+        function previewImg(input) {
+            if(input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const MAX_WIDTH = 400; 
+                        const c = document.createElement('canvas');
+                        const ctx = c.getContext('2d');
+                        
+                        const scaleFactor = MAX_WIDTH / img.width;
+                        c.width = MAX_WIDTH;
+                        c.height = img.height * scaleFactor;
 
-        // --- Expense Logic ---
-        window.saveExp = async () => {
-            if (!db || !userId) { showToast('錯誤：未連線至雲端。', 'error'); return; }
-            const name = document.getElementById('exp-name').value.trim();
-            const amount = parseInt(document.getElementById('exp-amt').value);
-            const type = document.querySelector('input[name="payment-type"]:checked').value;
+                        ctx.drawImage(img, 0, 0, c.width, c.height);
+                        
+                        tmpImg = c.toDataURL('image/jpeg', 0.6); 
+                        document.getElementById('img-check').classList.remove('hidden');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
 
-            if(!name || isNaN(amount) || amount <= 0) { showToast('請輸入有效內容。', 'error'); return; }
+        function getExps() { return JSON.parse(localStorage.getItem('trip_exps')||'[]'); }
+        
+        function saveExp() {
+            const n = document.getElementById('exp-name').value.trim();
+            const a = parseInt(document.getElementById('exp-amt').value);
+            if(!n || isNaN(a) || a <= 0) {
+                console.error('請輸入有效的品項名稱和日幣金額。'); 
+                return;
+            }
             
-            try {
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/expenses`), {
-                    name, amount, type, img: window.tmpImg || null, timestamp: Date.now()
-                });
-                showToast('已儲存！');
-                window.toggleDrawer(false);
-            } catch (e) { console.error(e); showToast('儲存失敗', 'error'); }
-        };
+            const exps = getExps();
+            exps.unshift({
+                id: Date.now(), 
+                n: n, 
+                a: a, 
+                img: tmpImg, 
+                d: new Date().toLocaleDateString('zh-TW')
+            });
+            
+            localStorage.setItem('trip_exps', JSON.stringify(exps));
+            renderExps();
+            toggleDrawer(false);
+        }
 
-        window.delExp = async (id) => {
-             if(confirm('確定刪除此記錄？')) {
-                 try { await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/expenses`, id)); showToast('已刪除'); }
-                 catch(e) { console.error(e); }
-             }
-        };
-
-        window.clearExpHistory = async () => {
-             if(confirm('確定清除所有記錄？')) {
-                 const q = query(collection(db, `artifacts/${appId}/users/${userId}/expenses`));
-                 const snapshot = await getDocs(q);
-                 snapshot.docs.forEach(d => deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/expenses`, d.id)));
-                 showToast('已清除');
-             }
-        };
-
-        // --- List Logic ---
-        window.addPack = async () => {
-            const text = document.getElementById('new-pack').value.trim();
-            if(text && db) {
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/packing`), { text, checked: false, timestamp: Date.now() });
-                document.getElementById('new-pack').value = '';
-            }
-        };
-        window.togPack = async (id, state) => { if(db) await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/packing`, id), { checked: !state }); };
-        window.delPack = async (id) => { if(db) await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/packing`, id)); };
-
-        window.addMemo = async () => {
-            const text = document.getElementById('new-memo').value.trim();
-            if(text && db) {
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/memos`), { text, timestamp: Date.now() });
-                document.getElementById('new-memo').value = '';
-                showToast('備忘已新增');
-            }
-        };
-        window.delMemo = async (id) => { if(db && confirm('刪除備忘？')) await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/memos`, id)); };
-
-        // --- Rendering ---
-        function renderExps(exps) {
+        function renderExps() {
             const el = document.getElementById('expense-list');
             el.innerHTML = '';
-            const r = parseFloat(document.getElementById('exchange-rate').value) || 0.22;
-            let cash = 0, credit = 0;
+            const r = parseFloat(document.getElementById('exchange-rate').value) || 0;
+            const exps = getExps();
+            let totalJPY = 0;
+            let totalTWD = 0;
             
-            exps.sort((a,b) => b.timestamp - a.timestamp);
-            if(exps.length === 0) el.innerHTML = '<p class="text-center text-gray-400 py-4">尚無記錄</p>';
+            if (exps.length === 0) {
+                el.innerHTML = '<p class="text-center text-gray-400 py-10">尚無消費記錄。點擊上方按鈕新增第一筆！</p>';
+                return;
+            }
 
             exps.forEach(e => {
-                const amt = e.amount || 0;
-                if(e.type === 'cash') cash += amt; else credit += amt;
-                const icon = e.type === 'cash' ? '<span class="text-xs bg-green-100 text-green-700 px-1 rounded">現金</span>' : '<span class="text-xs bg-blue-100 text-blue-700 px-1 rounded">刷卡</span>';
-                
+                const twd = Math.floor(e.a * r);
+                totalJPY += e.a;
+                totalTWD += twd;
+
                 el.insertAdjacentHTML('beforeend', `
                     <div class="card p-3 flex justify-between items-center shadow-sm">
                         <div class="flex gap-3 items-center flex-1 min-w-0">
-                            ${e.img ? `<div class="w-10 h-10 rounded-lg bg-cover bg-center" style="background-image:url('${e.img}')" onclick="winOpen('${e.img}')"></div>` : `<div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400"><i class="fas fa-receipt"></i></div>`}
-                            <div class="truncate">
-                                <div class="font-bold text-sm truncate">${e.name}</div>
-                                <div class="text-xs text-gray-400">${new Date(e.timestamp).toLocaleDateString()} ${icon}</div>
+                            ${e.img ? 
+                                `<div class="w-10 h-10 rounded-lg bg-cover bg-center flex-shrink-0 cursor-pointer" style="background-image:url(${e.img})" onclick="winOpen('${e.img}')" title="點擊看大圖"></div>` : 
+                                `<div class="w-10 h-10 rounded-lg bg-jp-light flex items-center justify-center text-gray-400 flex-shrink-0"><i class="fas fa-receipt"></i></div>`
+                            }
+                            <div class="truncate min-w-0">
+                                <div class="font-bold text-sm truncate">${e.n}</div>
+                                <div class="text-[10px] text-gray-400 font-num">${e.d}</div>
                             </div>
                         </div>
-                        <div class="text-right ml-2">
-                            <div class="font-bold text-sm">¥${amt.toLocaleString()}</div>
-                            <div class="text-xs text-gray-500">TWD$${Math.floor(amt*r).toLocaleString()}</div>
-                            <button onclick="delExp('${e.id}')" class="text-red-300 hover:text-red-500"><i class="fas fa-trash-alt"></i></button>
+                        <div class="text-right flex-shrink-0 ml-3">
+                            <div class="font-bold text-sm font-num text-jp-text">¥${e.a.toLocaleString('ja-JP')}</div>
+                            <div class="text-xs font-num text-jp-sub">TWD$${twd.toLocaleString('zh-TW')}</div>
+                            <button onclick="delExp(${e.id})" class="text-xs text-red-300 hover:text-red-500 mt-1"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </div>
                 `);
             });
-
-            // Summary
-            const total = cash + credit;
-            document.getElementById('expense-list').insertAdjacentHTML('afterbegin', `
-                <div class="card p-4 bg-sky-500 text-white mb-4 shadow-lg">
-                    <div class="flex justify-between items-center border-b border-white/30 pb-2 mb-2">
-                        <span class="text-sm">總支出</span>
-                        <span class="text-2xl font-bold font-num">¥${total.toLocaleString()}</span>
+            
+            // Add Total Summary Card
+            el.insertAdjacentHTML('afterbegin', `
+                <div class="card p-4 bg-jp-accent text-white mb-4 shadow-xl">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm">累積總花費</span>
+                        <span class="text-2xl font-bold font-num">¥${totalJPY.toLocaleString('ja-JP')}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div><i class="fas fa-money-bill-wave mr-1"></i> 現金: ¥${cash.toLocaleString()}</div>
-                        <div><i class="fas fa-credit-card mr-1"></i> 刷卡: ¥${credit.toLocaleString()}</div>
+                    <div class="flex justify-between items-center mt-1">
+                        <span class="text-xs">預估台幣總支出</span>
+                        <span class="text-lg font-num">TWD$${totalTWD.toLocaleString('zh-TW')}</span>
                     </div>
                 </div>
             `);
         }
+        
+        function delExp(id) { 
+            console.warn('用戶請求刪除消費記錄，ID:', id);
+            localStorage.setItem('trip_exps', JSON.stringify(getExps().filter(e=>e.id!==id))); 
+            renderExps(); 
+        }
 
-        function renderPack(list) {
-            const c = document.getElementById('packing-container'); c.innerHTML = '';
-            if(list.length===0) c.innerHTML = '<p class="text-center text-gray-400 py-4">清單是空的</p>';
-            list.sort((a,b) => a.text.localeCompare(b.text));
-            list.forEach(i => {
+        function clearExpHistory() {
+             console.warn('用戶請求清除所有消費記錄');
+             localStorage.removeItem('trip_exps'); 
+             renderExps(); 
+        }
+
+        function winOpen(u){ 
+            const w=window.open("","_blank","width=600,height=400,resizable=yes,scrollbars=yes"); 
+            w.document.write(`<body style="margin:0; background:#fcfcf5;"><img src="${u}" style="width:100%; height:auto; display:block;"></body>`); 
+            w.document.close();
+        }
+
+        // 3. LISTS Logic
+        
+        // --- Packing List ---
+        function getPack(){ 
+            const defaultList = [
+                {t:'護照',c:false}, {t:'網卡/eSIM',c:false}, {t:'充電線/轉接頭',c:false}, 
+                {t:'錢包/日幣',c:false}, {t:'行動電源',c:false}, {t:'薄外套/圍巾',c:false}
+            ];
+            return JSON.parse(localStorage.getItem('trip_pack')||JSON.stringify(defaultList)); 
+        }
+        function renderPack(){
+            const c = document.getElementById('packing-container'); c.innerHTML='';
+            getPack().forEach((i,x)=>{
                 c.insertAdjacentHTML('beforeend', `
-                    <div class="flex items-center justify-between p-3 border-b border-gray-100" onclick="togPack('${i.id}', ${i.checked})">
-                        <div class="flex items-center gap-3">
-                            <div class="w-5 h-5 rounded-full border ${i.checked?'bg-sky-500 border-sky-500':'border-gray-300'} flex items-center justify-center text-white text-xs">${i.checked?'✓':''}</div>
-                            <span class="${i.checked?'text-gray-400 line-through':''}">${i.text}</span>
+                    <div class="flex items-center justify-between p-3 border-b border-jp-light hover:bg-jp-light/50 rounded-md" onclick="togPack(${x})">
+                        <div class="flex items-center gap-3 cursor-pointer">
+                            <div class="w-6 h-6 rounded-full border-2 ${i.c?'bg-jp-sub border-jp-sub':'border-gray-300'} flex items-center justify-center transition-colors flex-shrink-0">
+                                ${i.c?'<i class="fas fa-check text-white text-xs"></i>':''}
+                            </div>
+                            <span class="${i.c?'text-gray-400 line-through':'text-jp-text'}">${i.t}</span>
                         </div>
-                        <button onclick="event.stopPropagation();delPack('${i.id}')" class="text-gray-300"><i class="fas fa-trash"></i></button>
+                        <button onclick="event.stopPropagation();delPack(${x})" class="text-gray-300 hover:text-red-400 p-1"><i class="fas fa-trash-alt"></i></button>
                     </div>
                 `);
             });
         }
-
-        function renderMemo(list) {
-            const c = document.getElementById('memo-container'); c.innerHTML = '';
-            if(list.length===0) c.innerHTML = '<p class="text-center text-gray-400 py-4">尚無備忘</p>';
-            list.sort((a,b) => b.timestamp - a.timestamp);
-            list.forEach(m => {
-                c.insertAdjacentHTML('beforeend', `
-                    <div class="bg-white p-3 rounded shadow-sm border-l-4 border-sky-400 relative mb-2">
-                        <p class="whitespace-pre-wrap text-sm text-gray-700">${m.text}</p>
-                        <button onclick="delMemo('${m.id}')" class="absolute top-2 right-2 text-gray-300 hover:text-red-400"><i class="fas fa-times"></i></button>
-                    </div>
-                `);
-            });
+        function togPack(x){ 
+            const l=getPack(); 
+            l[x].c=!l[x].c; 
+            localStorage.setItem('trip_pack',JSON.stringify(l)); 
+            renderPack(); 
+        }
+        function addPack(){ 
+            const input = document.getElementById('new-pack');
+            const v=input.value.trim(); 
+            if(v){ 
+                const l=getPack(); 
+                l.push({t:v,c:false}); 
+                localStorage.setItem('trip_pack',JSON.stringify(l)); 
+                input.value=''; 
+                renderPack(); 
+            }
+        }
+        function delPack(x){ 
+            const l=getPack(); 
+            l.splice(x,1); 
+            localStorage.setItem('trip_pack',JSON.stringify(l)); 
+            renderPack(); 
         }
 
-        // --- Init ---
-        window.onload = function() {
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        // Start Listeners
-                        onSnapshot(query(collection(db, `artifacts/${appId}/users/${userId}/expenses`)), (s) => renderExps(s.docs.map(d=>({id:d.id,...d.data()}))));
-                        onSnapshot(query(collection(db, `artifacts/${appId}/users/${userId}/packing`)), (s) => renderPack(s.docs.map(d=>({id:d.id,...d.data()}))));
-                        onSnapshot(query(collection(db, `artifacts/${appId}/users/${userId}/memos`)), (s) => renderMemo(s.docs.map(d=>({id:d.id,...d.data()}))));
-                    } else {
-                        signInAnonymously(auth).catch(console.error);
-                    }
+        // --- Memo ---
+        function switchList(t) {
+            document.getElementById('view-packing').className = t==='packing'?'block':'hidden';
+            document.getElementById('view-memo').className = t==='memo'?'block':'hidden';
+            
+            document.getElementById('tab-packing').className = t==='packing'?"flex-1 py-3 bg-jp-accent/10 text-jp-accent font-bold text-sm border-b-2 border-jp-accent transition-all":"flex-1 py-3 text-gray-400 text-sm transition-all";
+            document.getElementById('tab-memo').className = t==='memo'?"flex-1 py-3 bg-jp-accent/10 text-jp-accent font-bold text-sm border-b-2 border-jp-accent transition-all":"flex-1 py-3 text-gray-400 text-sm transition-all";
+        }
+        
+        function getMemo(){ return JSON.parse(localStorage.getItem('trip_memo')||'[]'); }
+        function renderMemo(){
+            const c=document.getElementById('memo-container'); c.innerHTML='';
+            getMemo().forEach(m=>{
+                // Auto-link recognition
+                let t = m.t.replace(/(http[s]?:\/\/[^\s]+)/g, (url) => {
+                    return `<a href="${url}" target="_blank" class="text-blue-600 underline hover:text-blue-800 break-words">${url.length > 30 ? url.substring(0, 30) + '...' : url} <i class="fas fa-external-link-alt text-[10px]"></i></a>`;
                 });
-            } catch(e) { console.error("Firebase Init Error", e); }
+                c.insertAdjacentHTML('beforeend', `
+                    <div class="bg-jp-light p-3 text-sm rounded-lg relative group border-l-4 border-jp-sub shadow-sm">
+                        <p class="whitespace-pre-wrap text-gray-700">${t}</p>
+                        <button onclick="delMemo(${m.id})" class="absolute top-2 right-2 text-gray-300 hover:text-red-500 p-1 transition-colors"><i class="fas fa-times-circle"></i></button>
+                    </div>
+                `);
+            });
+        }
+        function addMemo(){ 
+            const input = document.getElementById('new-memo');
+            const v = input.value.trim(); 
+            if(v){ 
+                const l=getMemo(); 
+                l.unshift({id:Date.now(),t:v}); 
+                localStorage.setItem('trip_memo',JSON.stringify(l)); 
+                input.value=''; 
+                renderMemo(); 
+            }
+        }
+        function delMemo(id){ 
+            localStorage.setItem('trip_memo',JSON.stringify(getMemo().filter(m=>m.id!==id))); 
+            renderMemo(); 
+        }
 
-            // Other UI Init
+        // --- Init & Splash ---
+        window.onload = function() {
+            // CHANGE 1: Inject daily weather bars
             document.getElementById('weather-day-1').innerHTML = getWeatherBarHtml(0);
             document.getElementById('weather-day-2').innerHTML = getWeatherBarHtml(1);
             document.getElementById('weather-day-3').innerHTML = getWeatherBarHtml(2);
             document.getElementById('weather-day-4').innerHTML = getWeatherBarHtml(3);
-            document.getElementById('weather-day-5').innerHTML = getWeatherBarHtml(4);
-            document.getElementById('weather-day-6').innerHTML = getWeatherBarHtml(5);
-            
+
+            // CHANGE 3: Render POI Quick Links
             renderPoiQuickLinks();
-            getGeolocation(); // For top banner
 
-            // Radio Button Style Logic
-            document.querySelectorAll('input[name="payment-type"]').forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    document.getElementById('label-cash').style.cssText = '';
-                    document.getElementById('label-credit').style.cssText = '';
-                    document.getElementById(`label-${e.target.value}`).style.cssText = `background-color: #ffffff; border: 1px solid #3b82f6; color: #3b82f6;`;
-                });
-            });
-
-            // Initial Nav
-            nav('plan');
-            switchPlanPage('overview');
-            setTimeout(() => document.getElementById('splash-screen').style.display='none', 800);
-        };
-    </script>
-
-    <style>
-        /* Base Styles */
-        body { background-color: #f0f9ff; color: #334155; font-family: 'Noto Sans TC', sans-serif; padding-bottom: 90px; }
-        .card { background: white; border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #e0f2fe; }
-        .card:active { transform: scale(0.99); transition: 0.1s; }
-        
-        /* Time Highlight */
-        .time-highlight { font-weight: 700; color: #0ea5e9; background-color: #e0f2fe; padding: 4px 8px; border-radius: 6px; font-family: 'Lato'; min-width: 50px; text-align: center; display: inline-block;}
-
-        /* Weather Bar */
-        .weather-bar { background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: white; box-shadow: 0 4px 10px rgba(14, 165, 233, 0.2); cursor: pointer; }
-        
-        /* Sub Nav */
-        .sub-nav-container { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 5px; }
-        .sub-nav-container::-webkit-scrollbar { display: none; }
-        .sub-nav-item { display: inline-block; padding: 10px 16px; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s; border-bottom: 2px solid transparent; }
-        .sub-nav-item.active { color: #0ea5e9; border-bottom-color: #0ea5e9; font-weight: 700; }
-
-        /* Navigation */
-        .nav-item { color: #94a3b8; transition: color 0.2s; }
-        .nav-item.active { color: #0ea5e9; }
-        
-        /* Sections */
-        .tab-content, .plan-page { display: none; }
-        .active { display: block; }
-        
-        /* Splash */
-        #splash-screen { position: fixed; inset: 0; background: #e0f2fe; z-index: 50; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s; }
-        .fade-out { opacity: 0; pointer-events: none; }
-        
-        /* Toast */
-        #toast-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 80%; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-        .toast-item { background: #10b981; color: white; padding: 10px 20px; border-radius: 50px; text-align: center; opacity: 0; transform: translateY(-10px); transition: all 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px; }
-        .toast-item.show { opacity: 1; transform: translateY(0); }
-    </style>
-</head>
-<body>
-
-    <!-- Toast -->
-    <div id="toast-container"></div>
-
-    <!-- Splash Screen -->
-    <div id="splash-screen">
-        <div class="mb-6 animate-bounce">
-            <!-- Shima Enaga SVG -->
-            <svg width="140" height="140" viewBox="0 0 512 512">
-                <circle cx="256" cy="270" r="170" fill="#ffffff" />
-                <circle cx="190" cy="240" r="18" fill="#1e293b"/>
-                <circle cx="322" cy="240" r="18" fill="#1e293b"/>
-                <path d="M246 260 L266 260 L256 280 Z" fill="#f59e0b"/>
-                <ellipse cx="170" cy="290" rx="25" ry="15" fill="#fecaca" opacity="0.5"/>
-                <ellipse cx="342" cy="290" rx="25" ry="15" fill="#fecaca" opacity="0.5"/>
-                <path d="M256 440 Q280 520 200 520" stroke="#334155" stroke-width="20" fill="none" stroke-linecap="round"/>
-                <path d="M100 300 Q80 350 120 380" stroke="#cbd5e1" stroke-width="10" fill="none" stroke-linecap="round"/>
-                <path d="M412 300 Q432 350 392 380" stroke="#cbd5e1" stroke-width="10" fill="none" stroke-linecap="round"/>
-            </svg>
-        </div>
-        <h1 class="text-2xl font-bold text-slate-700 tracking-widest">北海道冬旅</h1>
-        <p class="text-xs text-sky-500 mt-2 font-mono">2026 Winter Trip</p>
-    </div>
-
-    <!-- Header -->
-    <header class="fixed top-0 w-full bg-white/90 backdrop-blur-md z-40 px-4 pb-3 pt-safe border-b border-slate-100 flex justify-between items-end h-[calc(60px+env(safe-area-inset-top))]">
-        <div>
-            <h1 class="text-xl font-bold text-slate-800">北海道冬旅</h1>
-            <p class="text-[10px] text-slate-400 tracking-wider">Hokkaido 2026</p>
-        </div>
-        <span class="text-[10px] bg-sky-100 text-sky-600 px-3 py-1 rounded-full font-bold">Mar 19-24</span>
-    </header>
-
-    <main class="mt-[calc(70px+env(safe-area-inset-top))] px-4" id="app">
-        
-        <!-- Current Weather -->
-        <div id="current-weather-display" class="weather-bar p-4 rounded-2xl mb-6 shadow-md hidden flex items-center justify-between">
-            <div class="flex items-center">
-                <i class="fas fa-location-arrow text-2xl mr-3 opacity-90"></i>
-                <div>
-                    <p class="text-xs opacity-90" id="current-location">定位中...</p>
-                    <p class="text-xl font-bold" id="current-temp">--°C</p>
-                </div>
-            </div>
-            <div class="text-right">
-                 <p class="text-xs opacity-90" id="weather-desc">即時天氣</p>
-                 <p class="text-lg mt-1" id="weather-icon">☁️</p>
-            </div>
-        </div>
-
-        <!-- SECTION: PLAN -->
-        <div id="section-plan" class="tab-content active">
-            <!-- Sub Nav -->
-            <div class="sticky top-[calc(60px+env(safe-area-inset-top))] z-30 bg-white/95 backdrop-blur-sm -mx-4 px-4 border-b border-slate-100 sub-nav-container">
-                <div class="inline-flex">
-                    <button id="subnav-overview" class="sub-nav-item active" onclick="switchPlanPage('overview')">總覽</button>
-                    <button id="subnav-day1" class="sub-nav-item" onclick="switchPlanPage('day1')">Day 1</button>
-                    <button id="subnav-day2" class="sub-nav-item" onclick="switchPlanPage('day2')">Day 2</button>
-                    <button id="subnav-day3" class="sub-nav-item" onclick="switchPlanPage('day3')">Day 3</button>
-                    <button id="subnav-day4" class="sub-nav-item" onclick="switchPlanPage('day4')">Day 4</button>
-                    <button id="subnav-day5" class="sub-nav-item" onclick="switchPlanPage('day5')">Day 5</button>
-                    <button id="subnav-day6" class="sub-nav-item" onclick="switchPlanPage('day6')">Day 6</button>
-                </div>
-            </div>
-
-            <!-- PAGE: OVERVIEW -->
-            <div id="plan-page-overview" class="plan-page active pt-6">
-                <div class="card p-6 text-center bg-gradient-to-br from-white to-sky-50 border-none shadow-xl mb-6">
-                    <div class="mx-auto mb-4 w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-3xl">❄️</div>
-                    <h2 class="text-2xl font-bold text-slate-800 mb-1">北海道 6 日周遊</h2>
-                    <p class="text-sm text-slate-500">函館 ➔ 洞爺 ➔ 札幌 ➔ 小樽</p>
-                </div>
-
-                <div class="mb-6">
-                    <h3 class="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wide">航班 Flights</h3>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="card p-4 border-l-4 border-sky-400">
-                            <div class="text-xs font-bold text-sky-500 mb-1">去程 (虎航)</div>
-                            <div class="font-bold text-lg text-slate-800">06:45</div>
-                            <div class="text-xs text-slate-400 mb-2">TPE 台北</div>
-                            <div class="font-bold text-lg text-slate-800">11:10</div>
-                            <div class="text-xs text-slate-400">HKD 函館</div>
-                            <div class="mt-2 text-[10px] bg-slate-100 inline-block px-2 rounded text-slate-500">TTW236</div>
-                        </div>
-                        <div class="card p-4 border-l-4 border-sky-400">
-                            <div class="text-xs font-bold text-sky-500 mb-1">回程 (越捷)</div>
-                            <div class="font-bold text-lg text-slate-800">09:30</div>
-                            <div class="text-xs text-slate-400 mb-2">CTS 新千歲</div>
-                            <div class="font-bold text-lg text-slate-800">13:30</div>
-                            <div class="text-xs text-slate-400">TPE 台北</div>
-                            <div class="mt-2 text-[10px] bg-slate-100 inline-block px-2 rounded text-slate-500">TVJ571</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <h3 class="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wide">住宿 Hotels</h3>
-                    <div class="space-y-3">
-                        <div class="card p-4 flex gap-4 items-center" onclick="openMap('JR Inn Hakodate')">
-                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><i class="fas fa-bed"></i></div>
-                            <div>
-                                <div class="font-bold text-slate-700">JR INN Hakodate</div>
-                                <div class="text-xs text-slate-400">Day 1 (函館站旁)</div>
-                            </div>
-                        </div>
-                        <div class="card p-4 flex gap-4 items-center" onclick="openMap('WE Hotel Toya')">
-                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><i class="fas fa-hot-tub"></i></div>
-                            <div>
-                                <div class="font-bold text-slate-700">WE Hotel Toya</div>
-                                <div class="text-xs text-slate-400">Day 2 (隈研吾設計)</div>
-                            </div>
-                        </div>
-                        <div class="card p-4 flex gap-4 items-center" onclick="openMap('Keio Prelia Hotel Sapporo')">
-                            <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><i class="fas fa-city"></i></div>
-                            <div>
-                                <div class="font-bold text-slate-700">Keio Prelia Sapporo</div>
-                                <div class="text-xs text-slate-400">Day 3-5 (札幌北口)</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 1 -->
-            <div id="plan-page-day1" class="plan-page pt-6">
-                <div id="weather-day-1"></div>
-                <div class="space-y-4">
-                    <!-- Item -->
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">11:30</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">抵達函館機場 (HKD)</h4>
-                            <p class="text-sm text-slate-500 mt-1">入境、提領行李。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">13:00</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">JR Inn 辦理入住/寄放</h4>
-                            <p class="text-sm text-slate-500 mt-1">飯店位於函館車站旁。</p>
-                            <button onclick="openMap('JR Inn Hakodate')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full"><i class="fas fa-location-arrow mr-1"></i>導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4 border-l-4 border-red-400">
-                        <div class="time-highlight">13:23</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">幸運小丑漢堡 (午餐)</h4>
-                            <p class="text-sm text-slate-500 mt-1">函館名物！推薦中華炸雞漢堡。</p>
-                            <button onclick="openMap('幸運小丑漢堡 函館站前店')" class="mt-2 text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full"><i class="fas fa-utensils mr-1"></i>導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">14:51</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">五稜郭塔</h4>
-                            <p class="text-sm text-slate-500 mt-1">俯瞰星形要塞，歷史巡禮。</p>
-                            <button onclick="openMap('五稜郭塔')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full"><i class="fas fa-location-arrow mr-1"></i>導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">16:31</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">八幡坂</h4>
-                            <p class="text-sm text-slate-500 mt-1">直通大海的美麗坡道，拍照熱點。</p>
-                            <button onclick="openMap('八幡坂')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full"><i class="fas fa-camera mr-1"></i>導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">17:05</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">函館山百萬夜景</h4>
-                            <p class="text-sm text-slate-500 mt-1">搭乘纜車上山，世界三大夜景。</p>
-                            <button onclick="openMap('函館山纜車')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full"><i class="fas fa-star mr-1"></i>導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">19:01</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">返回 JR Inn 休息</h4>
-                            <p class="text-sm text-slate-500 mt-1">結束第一天行程。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 2 -->
-            <div id="plan-page-day2" class="plan-page pt-6">
-                <div id="weather-day-2"></div>
-                <div class="space-y-4">
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">08:24</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">金森紅磚倉庫</h4>
-                            <p class="text-sm text-slate-500 mt-1">港邊散步，異國風情倉庫群。</p>
-                            <button onclick="openMap('金森紅磚倉庫')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">09:25</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">星巴克 函館濱海店</h4>
-                            <p class="text-sm text-slate-500 mt-1">海景咖啡時光。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4 bg-sky-50 border-l-4 border-sky-500">
-                        <div class="time-highlight bg-sky-600 text-white">09:00</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-sky-900">租車取車 (預計)</h4>
-                            <p class="text-sm text-sky-700 mt-1">依照租車公司指引前往取車，開始自駕。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">12:53</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">昭和新山熊牧場</h4>
-                            <p class="text-sm text-slate-500 mt-1">餵食可愛棕熊。</p>
-                            <button onclick="openMap('昭和新山熊牧場')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">13:54</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">洞爺湖有珠山纜車</h4>
-                            <p class="text-sm text-slate-500 mt-1">眺望火山與湖景。</p>
-                            <button onclick="openMap('有珠山纜車')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">17:13</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">洞爺湖展望台</h4>
-                            <p class="text-sm text-slate-500 mt-1">全景拍攝點。</p>
-                            <button onclick="openMap('洞爺湖展望台')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">17:53</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">入住 WE Hotel Toya</h4>
-                            <p class="text-sm text-slate-500 mt-1">隈研吾設計的溫泉飯店。</p>
-                            <button onclick="openMap('WE Hotel Toya')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 3 -->
-            <div id="plan-page-day3" class="plan-page pt-6">
-                <div id="weather-day-3"></div>
-                <div class="space-y-4">
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">09:33</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">登別地獄谷</h4>
-                            <p class="text-sm text-slate-500 mt-1">硫磺煙霧繚繞的火山地形。</p>
-                            <button onclick="openMap('登別地獄谷')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">11:45</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">尼克斯海洋公園</h4>
-                            <p class="text-sm text-slate-500 mt-1">必看企鵝遊行。</p>
-                            <button onclick="openMap('尼克斯海洋公園')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">15:08</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">白色戀人公園</h4>
-                            <p class="text-sm text-slate-500 mt-1">歐風庭園與甜點工廠。</p>
-                            <button onclick="openMap('白色戀人公園')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">17:01</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">Stellar Place 晚餐/購物</h4>
-                            <p class="text-sm text-slate-500 mt-1">札幌車站直結商場。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">20:05</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">入住 札幌京王普雷利亞</h4>
-                            <p class="text-sm text-slate-500 mt-1">札幌北口，設有大浴場。</p>
-                            <button onclick="openMap('京王普雷利亞飯店札幌')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 4 -->
-            <div id="plan-page-day4" class="plan-page pt-6">
-                <div id="weather-day-4"></div>
-                <div class="space-y-4">
-                    <div class="card p-4 flex gap-4 bg-yellow-50">
-                        <div class="time-highlight bg-yellow-500 text-white">08:00</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">長途自駕日 (往旭川)</h4>
-                            <p class="text-sm text-slate-500 mt-1">前往道北，車程較長請注意休息。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">10:18</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">旭川神社</h4>
-                            <p class="text-sm text-slate-500 mt-1">參拜祈福。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">10:45</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">旭山動物園</h4>
-                            <p class="text-sm text-slate-500 mt-1">必看企鵝散步(視雪量)、北極熊。</p>
-                            <button onclick="openMap('旭山動物園')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">13:57</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">白鬚瀑布</h4>
-                            <p class="text-sm text-slate-500 mt-1">美瑛著名景觀。</p>
-                            <button onclick="openMap('白鬚瀑布')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">14:24</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">白金青池</h4>
-                            <p class="text-sm text-slate-500 mt-1">夢幻藍色池水與枯木。</p>
-                            <button onclick="openMap('白金青池')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">18:09</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">狸小路商店街</h4>
-                            <p class="text-sm text-slate-500 mt-1">返回札幌，晚餐與藥妝採買。</p>
-                            <button onclick="openMap('狸小路商店街')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4 border-l-4 border-red-500 bg-red-50">
-                        <div class="time-highlight bg-red-500 text-white">19:00</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-red-900">札幌還車</h4>
-                            <p class="text-sm text-red-700 mt-1">請務必在 19:00 前完成還車手續。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 5 -->
-            <div id="plan-page-day5" class="plan-page pt-6">
-                <div id="weather-day-5"></div>
-                <div class="space-y-4">
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">09:13</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">抵達小樽站</h4>
-                            <p class="text-sm text-slate-500 mt-1">搭乘 JR 抵達。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">10:26</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">小樽運河</h4>
-                            <p class="text-sm text-slate-500 mt-1">經典拍照景點，感受懷舊氛圍。</p>
-                            <button onclick="openMap('小樽運河')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">12:58</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">小樽住吉神社</h4>
-                            <p class="text-sm text-slate-500 mt-1">小樽總鎮守。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">15:01</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">北海道神宮</h4>
-                            <p class="text-sm text-slate-500 mt-1">返回札幌參拜，環境清幽。</p>
-                            <button onclick="openMap('北海道神宮')" class="mt-2 text-xs bg-sky-50 text-sky-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4 border-l-4 border-red-400">
-                        <div class="time-highlight">17:38</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">拉麵 札幌一粒庵</h4>
-                            <p class="text-sm text-slate-500 mt-1">米其林推薦，必吃味噌拉麵。</p>
-                            <button onclick="openMap('拉麵 札幌一粒庵')" class="mt-2 text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full">導航</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PAGE: DAY 6 -->
-            <div id="plan-page-day6" class="plan-page pt-6">
-                <div id="weather-day-6"></div>
-                <div class="space-y-4">
-                    <div class="card p-4 flex gap-4 bg-red-50 border-l-4 border-red-500">
-                        <div class="time-highlight bg-red-500 text-white">06:18</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-red-900">飯店出發 → 機場</h4>
-                            <p class="text-sm text-red-700 mt-1">前往新千歲機場，準備回程。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">07:31</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">抵達新千歲機場</h4>
-                            <p class="text-sm text-slate-500 mt-1">最後購物 (伴手禮/甜點)，享用早餐。</p>
-                        </div>
-                    </div>
-                    <div class="card p-4 flex gap-4">
-                        <div class="time-highlight">09:30</div>
-                        <div class="flex-1">
-                            <h4 class="font-bold text-slate-800">✈️ 起飛返台</h4>
-                            <p class="text-sm text-slate-500 mt-1">TVJ571 飛往桃園。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION: GUIDE -->
-        <div id="section-guide" class="tab-content">
-            <h2 class="text-xl font-bold text-slate-800 mb-4 border-l-4 border-slate-400 pl-3">景點快速導航</h2>
-            <div class="grid grid-cols-2 gap-3" id="poi-quick-links"></div>
-        </div>
-
-        <!-- SECTION: UTIL -->
-        <div id="section-util" class="tab-content">
-            <h2 class="text-xl font-bold text-slate-800 mb-4 border-l-4 border-sky-500 pl-3">記帳與工具</h2>
-            <!-- Calculator -->
-            <div class="card bg-slate-50 border-0 mb-4 p-4">
-                <div class="flex justify-between mb-2">
-                    <label class="text-xs font-bold text-slate-500">匯率</label>
-                    <input type="number" id="exchange-rate" value="0.22" class="w-16 bg-transparent border-b border-slate-300 text-right text-sm" oninput="window.calc()">
-                </div>
-                <div class="flex gap-2">
-                    <input type="number" id="calc-input" placeholder="日幣金額" class="jp-input text-lg font-bold" oninput="window.calc()">
-                </div>
-                <div class="text-right mt-2 text-slate-400 text-sm" id="res-twd">TWD $0</div>
-            </div>
-            
-            <button onclick="toggleDrawer(true)" class="w-full bg-white border-2 border-dashed border-slate-200 text-slate-500 py-3 rounded-xl mb-6 font-bold hover:bg-slate-50">
-                + 新增消費
-            </button>
-
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="font-bold text-slate-700">消費明細</h3>
-                <button onclick="clearExpHistory()" class="text-xs text-red-400"><i class="fas fa-trash"></i> 清除</button>
-            </div>
-            <div id="expense-list" class="space-y-2 pb-20"></div>
-        </div>
-
-        <!-- SECTION: LISTS -->
-        <div id="section-lists" class="tab-content">
-            <h2 class="text-xl font-bold text-slate-800 mb-4 border-l-4 border-green-500 pl-3">清單</h2>
-            <div class="card p-0 overflow-hidden">
-                <div class="flex border-b border-slate-100">
-                    <button onclick="switchList('packing')" class="flex-1 py-3 bg-sky-50 text-sky-600 font-bold text-sm">行李清單</button>
-                    <button onclick="switchList('memo')" class="flex-1 py-3 text-slate-400 text-sm">備忘錄</button>
-                </div>
-                <div id="view-packing" class="p-4">
-                    <div class="flex gap-2 mb-4">
-                        <input id="new-pack" class="jp-input text-sm" placeholder="新增項目...">
-                        <button onclick="addPack()" class="bg-sky-500 text-white w-10 rounded-lg">+</button>
-                    </div>
-                    <div id="packing-container" class="space-y-2"></div>
-                </div>
-                <div id="view-memo" class="p-4 hidden">
-                    <div class="flex gap-2 mb-4">
-                        <input id="new-memo" class="jp-input text-sm" placeholder="新增備忘...">
-                        <button onclick="addMemo()" class="bg-sky-500 text-white w-10 rounded-lg">+</button>
-                    </div>
-                    <div id="memo-container" class="space-y-2"></div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Bottom Nav -->
-    <nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur border-t border-slate-200 pb-safe z-50">
-        <div class="flex justify-around items-center h-[60px]">
-            <button onclick="nav('plan')" class="nav-item active flex flex-col items-center text-sky-500">
-                <i class="fas fa-calendar-alt text-lg"></i><span class="text-[10px]">行程</span>
-            </button>
-            <button onclick="nav('guide')" class="nav-item flex flex-col items-center text-slate-400">
-                <i class="fas fa-map-location-dot text-lg"></i><span class="text-[10px]">導覽</span>
-            </button>
-            <button onclick="nav('util')" class="nav-item flex flex-col items-center text-slate-400">
-                <i class="fas fa-calculator text-lg"></i><span class="text-[10px]">記帳</span>
-            </button>
-            <button onclick="nav('lists')" class="nav-item flex flex-col items-center text-slate-400">
-                <i class="fas fa-check-square text-lg"></i><span class="text-[10px]">清單</span>
-            </button>
-        </div>
-    </nav>
-
-    <!-- Drawer -->
-    <div id="expense-drawer" class="fixed inset-0 z-[60] hidden">
-        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="toggleDrawer(false)"></div>
-        <div class="absolute bottom-0 w-full bg-white rounded-t-2xl p-6 pb-safe animate-[slideUp_0.3s]">
-            <h3 class="font-bold text-center mb-4 text-slate-800">新增消費</h3>
-            <div class="flex gap-3 mb-4">
-                <label class="flex-1 text-center border rounded p-2 cursor-pointer" id="label-cash">
-                    <input type="radio" name="payment-type" value="cash" class="hidden" checked> 現金
-                </label>
-                <label class="flex-1 text-center border rounded p-2 cursor-pointer" id="label-credit">
-                    <input type="radio" name="payment-type" value="credit" class="hidden"> 信用卡
-                </label>
-            </div>
-            <input id="exp-name" class="jp-input mb-3" placeholder="項目名稱">
-            <input id="exp-amt" type="number" class="jp-input mb-6 text-xl font-bold" placeholder="¥ 金額">
-            <button onclick="saveExp()" class="w-full bg-sky-500 text-white py-3 rounded-xl font-bold shadow-lg">儲存</button>
-        </div>
-    </div>
-
-    <script>
-        // --- Static Data ---
-        const weatherData = [
-            {day:'Day 1', date:'03/19', icon:'☁️', temp:'3°/8°', loc:'函館'},
-            {day:'Day 2', date:'03/20', icon:'☀️', temp:'2°/7°', loc:'洞爺'},
-            {day:'Day 3', date:'03/21', icon:'☁️', temp:'1°/6°', loc:'札幌'},
-            {day:'Day 4', date:'03/22', icon:'❄️', temp:'-1°/4°', loc:'美瑛'},
-            {day:'Day 5', date:'03/23', icon:'☀️', temp:'0°/5°', loc:'小樽'},
-            {day:'Day 6', date:'03/24', icon:'✈️', temp:'1°/6°', loc:'千歲'},
-        ];
-        const pois = [
-            {n:'函館機場',q:'函館空港'}, {n:'幸運小丑漢堡',q:'幸運小丑漢堡 函館站前店'}, {n:'五稜郭塔',q:'五稜郭塔'},
-            {n:'金森紅磚倉庫',q:'金森紅磚倉庫'}, {n:'函館山夜景',q:'函館山ロープウェイ'}, {n:'WE Hotel Toya',q:'WE Hotel Toya'},
-            {n:'登別地獄谷',q:'登別地獄谷'}, {n:'尼克斯海洋公園',q:'尼克斯海洋公園'}, {n:'白色戀人公園',q:'白色戀人公園'},
-            {n:'旭山動物園',q:'旭山動物園'}, {n:'白鬚瀑布',q:'白鬚瀑布'}, {n:'白金青池',q:'白金青池'},
-            {n:'狸小路',q:'狸小路商店街'}, {n:'小樽運河',q:'小樽運河'}, {n:'新千歲機場',q:'新千歲機場'}
-        ];
-
-        // --- Render Helpers ---
-        function renderWeather() {
-            weatherData.forEach((w,i) => {
-                const el = document.getElementById(`weather-day-${i+1}`);
-                if(el) el.innerHTML = `
-                    <div class="flex items-center justify-between bg-gradient-to-r from-sky-400 to-blue-500 text-white p-3 rounded-xl mb-4 shadow-sm">
-                        <div class="flex items-center gap-3">
-                            <span class="text-2xl">${w.icon}</span>
-                            <div><div class="text-xs font-bold opacity-90">${w.date} ${w.loc}</div><div class="text-sm font-bold">${w.temp}</div></div>
-                        </div>
-                        <i class="fas fa-cloud-sun opacity-50"></i>
-                    </div>`;
-            });
-        }
-
-        function renderPois() {
-            const c = document.getElementById('poi-quick-links');
-            c.innerHTML = pois.map(p => `
-                <button onclick="openMap('${p.q}')" class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-left active:scale-95 transition-transform">
-                    <div class="font-bold text-slate-700 text-sm truncate">${p.n}</div>
-                    <div class="text-xs text-sky-500 mt-1"><i class="fas fa-location-arrow"></i> 導航</div>
-                </button>
-            `).join('');
-        }
-
-        function switchPlanPage(id) {
-            document.querySelectorAll('.plan-page').forEach(e => e.classList.remove('active'));
-            document.getElementById(`plan-page-${id}`).classList.add('active');
-            document.querySelectorAll('.sub-nav-item').forEach(e => e.classList.remove('active'));
-            document.getElementById(`subnav-${id}`).classList.add('active');
-            window.scrollTo(0,0);
-        }
-
-        function switchList(type) {
-            document.getElementById('view-packing').style.display = type==='packing'?'block':'none';
-            document.getElementById('view-memo').style.display = type==='memo'?'block':'none';
-        }
-
-        function nav(id) {
-            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
-            document.getElementById(`section-${id}`).classList.add('active');
-            document.querySelectorAll('.nav-item').forEach(e => {
-                e.className = 'nav-item flex flex-col items-center text-slate-400';
-            });
-            event.currentTarget.className = 'nav-item active flex flex-col items-center text-sky-500';
-            window.scrollTo(0,0);
-        }
-
-        window.calc = () => {
-            const v = document.getElementById('calc-input').value;
-            const r = parseFloat(document.getElementById('exchange-rate').value);
-            if(v) {
-                try {
-                    const res = new Function('return ' + v)();
-                    document.getElementById('res-twd').innerText = `≈ TWD $${Math.floor(res*r)}`;
-                    document.getElementById('exp-amt').value = Math.floor(res);
-                } catch(e){}
+            // Check for initial hash and navigate if available
+            const initialHash = window.location.hash.substring(1);
+            if (initialHash && ['plan', 'guide', 'util', 'lists'].includes(initialHash)) {
+                nav(initialHash);
+            } else {
+                nav('plan'); // Default to plan
+                switchPlanPage('overview'); // Default to overview sub-page
             }
-        };
 
-        // Radio Logic
-        document.querySelectorAll('input[name="payment-type"]').forEach(r => {
-            r.addEventListener('change', e => {
-                document.getElementById('label-cash').style.cssText = '';
-                document.getElementById('label-credit').style.cssText = '';
-                e.target.parentElement.style.cssText = `background-color: #f0f9ff; border-color: #3b82f6; color: #3b82f6;`;
-            });
-        });
-
-        // Run
-        renderWeather();
-        renderPois();
-        setTimeout(() => document.getElementById('splash-screen').style.display='none', 1000);
-        
-        // Setup initial UI states
-        document.getElementById('label-cash').style.cssText = `background-color: #f0f9ff; border-color: #3b82f6; color: #3b82f6;`;
+            renderExps(); 
+            renderPack(); 
+            renderMemo();
+            
+            // Remove splash after delay
+            setTimeout(() => {
+                document.getElementById('splash-screen').classList.add('fade-out');
+                setTimeout(() => document.getElementById('splash-screen').style.display='none', 500);
+            }, 800);
+        }
     </script>
 </body>
 </html>
